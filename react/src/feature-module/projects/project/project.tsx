@@ -3,14 +3,11 @@ import { Link } from "react-router-dom";
 import { all_routes } from "../../router/all_routes";
 import ImageWithBasePath from "../../../core/common/imageWithBasePath";
 import CommonSelect, { Option } from "../../../core/common/commonSelect";
-import { DatePicker } from "antd";
-import { priority } from "../../../core/common/selectoption/selectoption";
-import CommonTagsInput from "../../../core/common/Taginput";
-import CommonTextEditor from "../../../core/common/textEditor";
 import CollapseHeader from "../../../core/common/collapse-header/collapse-header";
 import { useSocket } from "../../../SocketContext";
 import { toast } from "react-toastify";
 import { Socket } from "socket.io-client";
+import ProjectModals from "../../../core/modals/projectModal";
 
 interface Project {
   _id: string;
@@ -73,28 +70,8 @@ const Project = () => {
     });
   }, []);
 
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [showEditModal, setShowEditModal] = useState(false);
-  const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [deletingProject, setDeletingProject] = useState<Project | null>(null);
 
-
-  const [formData, setFormData] = useState({
-    name: "",
-    client: "",
-    description: "",
-    startDate: null as Date | null,
-    endDate: null as Date | null,
-    priority: "Medium",
-    status: "Active",
-    teamMembers: [] as string[],
-    tags: [] as string[]
-  });
-
-  const getModalContainer = () => {
-    const modalElement = document.getElementById("modal-datepicker");
-    return modalElement ? modalElement : document.body;
-  };
 
   const statusOptions = [
     { value: "all", label: "All Status" },
@@ -126,12 +103,6 @@ const Project = () => {
 
     setLoading(true);
     socket.emit("project:getAllData", filterParams);
-  }, [socket]);
-
-  const handleCreateProject = useCallback((projectData: any) => {
-    if (!socket) return;
-
-    socket.emit("project:create", projectData);
   }, [socket]);
 
   const handleUpdateProject = useCallback((projectId: string, updateData: any) => {
@@ -176,28 +147,6 @@ const Project = () => {
       }
     };
 
-    const handleCreateResponse = (response: any) => {
-      if (response.done) {
-        toast.success("Project created successfully");
-        setShowAddModal(false);
-        resetForm();
-        loadProjects();
-      } else {
-        toast.error(response.error || "Failed to create project");
-      }
-    };
-
-    const handleUpdateResponse = (response: any) => {
-      if (response.done) {
-        toast.success("Project updated successfully");
-        setShowEditModal(false);
-        setEditingProject(null);
-        resetForm();
-        loadProjects();
-      } else {
-        toast.error(response.error || "Failed to update project");
-      }
-    };
 
     const handleDeleteResponse = (response: any) => {
       if (response.done) {
@@ -251,8 +200,6 @@ const Project = () => {
 
 
     socket.on("project:getAllData-response", handleGetAllDataResponse);
-    socket.on("project:create-response", handleCreateResponse);
-    socket.on("project:update-response", handleUpdateResponse);
     socket.on("project:delete-response", handleDeleteResponse);
     socket.on("project/export-pdf-response", handleExportPDFResponse);
     socket.on("project/export-excel-response", handleExportExcelResponse);
@@ -264,8 +211,6 @@ const Project = () => {
 
     return () => {
       socket.off("project:getAllData-response", handleGetAllDataResponse);
-      socket.off("project:create-response", handleCreateResponse);
-      socket.off("project:update-response", handleUpdateResponse);
       socket.off("project:delete-response", handleDeleteResponse);
       socket.off("project/export-pdf-response", handleExportPDFResponse);
       socket.off("project/export-excel-response", handleExportExcelResponse);
@@ -292,61 +237,10 @@ const Project = () => {
   }, []);
 
 
-  const resetForm = () => {
-    setFormData({
-      name: "",
-      client: "",
-      description: "",
-      startDate: null,
-      endDate: null,
-      priority: "medium",
-      status: "active",
-      teamMembers: [],
-      tags: []
-    });
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!formData.name.trim()) {
-      toast.error("Project name is required");
-      return;
-    }
-
-    const projectData = {
-      name: formData.name,
-      client: formData.client || undefined,
-      description: formData.description || undefined,
-      startDate: formData.startDate || undefined,
-      endDate: formData.endDate || undefined,
-      priority: formData.priority,
-      status: formData.status,
-      teamMembers: formData.teamMembers,
-      tags: formData.tags
-    };
-
-    if (editingProject) {
-      handleUpdateProject(editingProject._id, projectData);
-    } else {
-      handleCreateProject(projectData);
-    }
-  };
 
   const handleEdit = (project: Project) => {
-    setEditingProject(project);
-    setFormData({
-      name: project.name,
-      client: project.client || "",
-      description: project.description || "",
-      startDate: project.startDate || null,
-      endDate: project.endDate || null,
-      priority: project.priority,
-      status: project.status,
-      teamMembers: project.teamMembers || [],
-      tags: project.tags || []
-    });
-    setShowEditModal(true);
+    // For now, just show an alert. You can implement edit modal later
+    alert(`Edit project: ${project.name}`);
   };
 
   const handleDelete = (project: Project) => {
@@ -486,17 +380,17 @@ const Project = () => {
                     </ul>
                   </div>
                 </div>
-                <div className="mb-2">
-                  <button
+                <div className="me-2 mb-2">
+                  <Link
+                    to="#"
+                    data-bs-toggle="modal"
+                    data-inert={true}
+                    data-bs-target="#add_project"
                     className="btn btn-primary d-flex align-items-center"
-                    onClick={() => {
-                      resetForm();
-                      setShowAddModal(true);
-                    }}
                   >
                     <i className="ti ti-circle-plus me-2" />
                     Add Project
-                  </button>
+                  </Link>
                 </div>
                 <div className="ms-2 head-icons">
                   <CollapseHeader />
@@ -694,307 +588,7 @@ const Project = () => {
         </div>
       </>
 
-      {showAddModal && (
-        <div className="modal fade show" style={{ display: 'block' }} role="dialog">
-          <div className="modal-dialog modal-dialog-centered modal-lg">
-            <div className="modal-content">
-              <div className="modal-header header-border align-items-center justify-content-between">
-                <div className="d-flex align-items-center">
-                  <h5 className="modal-title me-2">Add Project</h5>
-                  <p className="text-dark">Project ID : PRO-{Date.now().toString().slice(-4)}</p>
-                </div>
-                <button
-                  type="button"
-                  className="btn-close custom-btn-close"
-                  onClick={() => setShowAddModal(false)}
-                >
-                  <i className="ti ti-x" />
-                </button>
-              </div>
-              <form onSubmit={handleSubmit}>
-                <div className="modal-body">
-                  <div className="row">
-                    <div className="col-md-12">
-                      <div className="mb-3">
-                        <label className="form-label">Project Name *</label>
-                        <input
-                          type="text"
-                          className="form-control"
-                          value={formData.name}
-                          onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                          required
-                        />
-                      </div>
-                    </div>
-                    <div className="col-md-12">
-                      <div className="mb-3">
-                        <label className="form-label">Client</label>
-                        <CommonSelect
-                          className="select"
-                          options={clientOptions.filter(c => c.value !== 'all')}
-                          defaultValue={formData.client}
-                          onChange={(option) => setFormData(prev => ({ ...prev, client: option?.value || "" }))}
-                        />
-                      </div>
-                    </div>
-                    <div className="col-md-6">
-                      <div className="mb-3">
-                        <label className="form-label">Start Date</label>
-                        <DatePicker
-                          className="form-control"
-                          format="DD-MM-YYYY"
-                          getPopupContainer={getModalContainer}
-                          placeholder="DD-MM-YYYY"
-                          value={formData.startDate}
-                          onChange={(date) => setFormData(prev => ({ ...prev, startDate: date }))}
-                        />
-                      </div>
-                    </div>
-                    <div className="col-md-6">
-                      <div className="mb-3">
-                        <label className="form-label">End Date</label>
-                        <DatePicker
-                          className="form-control"
-                          format="DD-MM-YYYY"
-                          getPopupContainer={getModalContainer}
-                          placeholder="DD-MM-YYYY"
-                          value={formData.endDate}
-                          onChange={(date) => setFormData(prev => ({ ...prev, endDate: date }))}
-                        />
-                      </div>
-                    </div>
-                    <div className="col-md-6">
-                      <div className="mb-3">
-                        <label className="form-label">Priority</label>
-                        <CommonSelect
-                          className="select"
-                          options={[
-                            { value: "low", label: "Low" },
-                            { value: "medium", label: "Medium" },
-                            { value: "high", label: "High" },
-                          ]}
-                          defaultValue={formData.priority}
-                          onChange={(option) => setFormData(prev => ({ ...prev, priority: option?.value || "medium" }))}
-                        />
-                      </div>
-                    </div>
-                    <div className="col-md-6">
-                      <div className="mb-3">
-                        <label className="form-label">Status</label>
-                        <CommonSelect
-                          className="select"
-                          options={[
-                            { value: "active", label: "Active" },
-                            { value: "completed", label: "Completed" },
-                            { value: "on-hold", label: "On Hold" },
-                          ]}
-                          defaultValue={formData.status}
-                          onChange={(option) => setFormData(prev => ({ ...prev, status: option?.value || "active" }))}
-                        />
-                      </div>
-                    </div>
-                    <div className="col-md-12">
-                      <div className="mb-3">
-                        <label className="form-label">Description</label>
-                        <textarea
-                          className="form-control"
-                          rows={3}
-                          value={formData.description}
-                          onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                          placeholder="Enter project description..."
-                        />
-                      </div>
-                    </div>
-                    <div className="col-md-12">
-                      <div className="mb-3">
-                        <label className="form-label">Team Members</label>
-                        <CommonTagsInput
-                          value={formData.teamMembers}
-                          onChange={(tags) => setFormData(prev => ({ ...prev, teamMembers: tags }))}
-                          placeholder="Add team members..."
-                        />
-                      </div>
-                    </div>
-                    <div className="col-md-12">
-                      <div className="mb-3">
-                        <label className="form-label">Tags</label>
-                        <CommonTagsInput
-                          value={formData.tags}
-                          onChange={(tags) => setFormData(prev => ({ ...prev, tags: tags }))}
-                          placeholder="Add tags..."
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div className="modal-footer">
-                  <button
-                    type="button"
-                    className="btn btn-outline-light border me-2"
-                    onClick={() => setShowAddModal(false)}
-                  >
-                    Cancel
-                  </button>
-                  <button className="btn btn-primary" type="submit">
-                    Create Project
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showEditModal && editingProject && (
-        <div className="modal fade show" style={{ display: 'block' }} role="dialog">
-          <div className="modal-dialog modal-dialog-centered modal-lg">
-            <div className="modal-content">
-              <div className="modal-header header-border align-items-center justify-content-between">
-                <div className="d-flex align-items-center">
-                  <h5 className="modal-title me-2">Edit Project</h5>
-                  <p className="text-dark">Project ID : PRO-{editingProject._id.slice(-4)}</p>
-                </div>
-                <button
-                  type="button"
-                  className="btn-close custom-btn-close"
-                  onClick={() => setShowEditModal(false)}
-                >
-                  <i className="ti ti-x" />
-                </button>
-              </div>
-              <form onSubmit={handleSubmit}>
-                <div className="modal-body">
-                  <div className="row">
-                    <div className="col-md-12">
-                      <div className="mb-3">
-                        <label className="form-label">Project Name *</label>
-                        <input
-                          type="text"
-                          className="form-control"
-                          value={formData.name}
-                          onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                          required
-                        />
-                      </div>
-                    </div>
-                    <div className="col-md-12">
-                      <div className="mb-3">
-                        <label className="form-label">Client</label>
-                        <CommonSelect
-                          className="select"
-                          options={clientOptions.filter(c => c.value !== 'all')}
-                          defaultValue={formData.client}
-                          onChange={(option) => setFormData(prev => ({ ...prev, client: option?.value || "" }))}
-                        />
-                      </div>
-                    </div>
-                    <div className="col-md-6">
-                      <div className="mb-3">
-                        <label className="form-label">Start Date</label>
-                        <DatePicker
-                          className="form-control"
-                          format="DD-MM-YYYY"
-                          getPopupContainer={getModalContainer}
-                          placeholder="DD-MM-YYYY"
-                          value={formData.startDate}
-                          onChange={(date) => setFormData(prev => ({ ...prev, startDate: date }))}
-                        />
-                      </div>
-                    </div>
-                    <div className="col-md-6">
-                      <div className="mb-3">
-                        <label className="form-label">End Date</label>
-                        <DatePicker
-                          className="form-control"
-                          format="DD-MM-YYYY"
-                          getPopupContainer={getModalContainer}
-                          placeholder="DD-MM-YYYY"
-                          value={formData.endDate}
-                          onChange={(date) => setFormData(prev => ({ ...prev, endDate: date }))}
-                        />
-                      </div>
-                    </div>
-                    <div className="col-md-6">
-                      <div className="mb-3">
-                        <label className="form-label">Priority</label>
-                        <CommonSelect
-                          className="select"
-                          options={[
-                            { value: "low", label: "Low" },
-                            { value: "medium", label: "Medium" },
-                            { value: "high", label: "High" },
-                          ]}
-                          defaultValue={formData.priority}
-                          onChange={(option) => setFormData(prev => ({ ...prev, priority: option?.value || "medium" }))}
-                        />
-                      </div>
-                    </div>
-                    <div className="col-md-6">
-                      <div className="mb-3">
-                        <label className="form-label">Status</label>
-                        <CommonSelect
-                          className="select"
-                          options={[
-                            { value: "active", label: "Active" },
-                            { value: "completed", label: "Completed" },
-                            { value: "on-hold", label: "On Hold" },
-                          ]}
-                          defaultValue={formData.status}
-                          onChange={(option) => setFormData(prev => ({ ...prev, status: option?.value || "active" }))}
-                        />
-                      </div>
-                    </div>
-                    <div className="col-md-12">
-                      <div className="mb-3">
-                        <label className="form-label">Description</label>
-                        <textarea
-                          className="form-control"
-                          rows={3}
-                          value={formData.description}
-                          onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                          placeholder="Enter project description..."
-                        />
-                      </div>
-                    </div>
-                    <div className="col-md-12">
-                      <div className="mb-3">
-                        <label className="form-label">Team Members</label>
-                        <CommonTagsInput
-                          value={formData.teamMembers}
-                          onChange={(tags) => setFormData(prev => ({ ...prev, teamMembers: tags }))}
-                          placeholder="Add team members..."
-                        />
-                      </div>
-                    </div>
-                    <div className="col-md-12">
-                      <div className="mb-3">
-                        <label className="form-label">Tags</label>
-                        <CommonTagsInput
-                          value={formData.tags}
-                          onChange={(tags) => setFormData(prev => ({ ...prev, tags: tags }))}
-                          placeholder="Add tags..."
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div className="modal-footer">
-                  <button
-                    type="button"
-                    className="btn btn-outline-light border me-2"
-                    onClick={() => setShowEditModal(false)}
-                  >
-                    Cancel
-                  </button>
-                  <button className="btn btn-primary" type="submit">
-                    Update Project
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-      )}
+      <ProjectModals onProjectCreated={() => loadProjects(filters)} />
 
       {deletingProject && (
         <div className="modal fade show" style={{ display: 'block' }} role="dialog">
@@ -1031,10 +625,8 @@ const Project = () => {
           </div>
         </div>
       )}
-      {(showAddModal || showEditModal || deletingProject) && (
+      {deletingProject && (
         <div className="modal-backdrop fade show" onClick={() => {
-          setShowAddModal(false);
-          setShowEditModal(false);
           setDeletingProject(null);
         }}></div>
       )}
