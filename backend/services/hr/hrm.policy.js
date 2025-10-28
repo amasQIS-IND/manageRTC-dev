@@ -97,6 +97,8 @@ export const displayPolicy = async (companyId, hrId = 1, filters = {}) => {
         : "No policies found matching criteria",
     };
   } catch (error) {
+    console.log(error);
+
     return {
       done: false,
       error: `Failed to fetch policies: ${error.message}`,

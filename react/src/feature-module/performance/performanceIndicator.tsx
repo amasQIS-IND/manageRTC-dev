@@ -1,63 +1,20 @@
-import React, { useState, useEffect } from "react";
+import React from "react";
 import { Link } from "react-router-dom";
 import { all_routes } from "../router/all_routes";
+import { performanceIndicatorData } from "../../core/data/json/performanceIndicatorData";
 import CollapseHeader from "../../core/common/collapse-header/collapse-header";
 import ImageWithBasePath from "../../core/common/imageWithBasePath";
 import Table from "../../core/common/dataTable/index";
 import PerformanceIndicatorModal from "../../core/modals/performanceIndicatorModal";
 import Footer from "../../core/common/footer";
-import performanceIndicatorService from "../../core/services/performance/performanceIndicator.service";
 
 const PerformanceIndicator = () => {
   const routes = all_routes;
-  const [data, setData] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  // REMOVE handleEdit and editingItem state
-
-  useEffect(() => {
-    fetchPerformanceIndicators();
-  }, []);
-
-  const fetchPerformanceIndicators = async () => {
-    try {
-      setLoading(true);
-      const response = await performanceIndicatorService.getAllPerformanceIndicators();
-      if (response.done) {
-        setData(response.data || []);
-      } else {
-        setError(response.error || 'Failed to fetch performance indicators');
-      }
-    } catch (err) {
-      setError('Failed to fetch performance indicators');
-      console.error('Error fetching performance indicators:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // REMOVE handleEdit function
-
-  const handleDelete = async (item: any) => {
-    if (window.confirm('Are you sure you want to delete this performance indicator?')) {
-      try {
-        const response = await performanceIndicatorService.deletePerformanceIndicator(item._id);
-        if (response.done) {
-          alert('Performance indicator deleted successfully!');
-          fetchPerformanceIndicators(); // Refresh data
-        } else {
-          alert(response.error || 'Failed to delete performance indicator');
-        }
-      } catch (err) {
-        alert('Failed to delete performance indicator');
-        console.error('Error deleting performance indicator:', err);
-      }
-    }
-  };
+  const data = performanceIndicatorData;
   const columns = [
     {
       title: "Designation",
-      dataIndex: "designation",
+      dataIndex: "Designation",
       render: (text: string) => (
         <div className="d-flex align-items-center file-name-icon">
           <div className="ms-2">
@@ -67,21 +24,21 @@ const PerformanceIndicator = () => {
           </div>
         </div>
       ),
-      sorter: (a: any, b: any) => a.designation.localeCompare(b.designation),
+      sorter: (a: any, b: any) => a.Designation.length - b.Designation.length,
     },
     {
       title: "Department",
-      dataIndex: "department",
-      sorter: (a: any, b: any) => a.department.localeCompare(b.department),
+      dataIndex: "Department",
+      sorter: (a: any, b: any) => a.Department.length - b.Department.length,
     },
     {
       title: "Approved By",
-      dataIndex: "approvedBy",
+      dataIndex: "ApprovedBy",
       render: (text: string, record: any) => (
         <div className="d-flex align-items-center file-name-icon">
           <Link to="#" className="avatar avatar-md avatar-rounded">
             <ImageWithBasePath
-              src={`assets/img/users/${record.image}`}
+              src={`assets/img/users/${record.Image}`}
               className="img-fluid"
               alt="img"
             />
@@ -90,53 +47,50 @@ const PerformanceIndicator = () => {
             <h6 className="fw-medium">
               <Link to="#">{text}</Link>
             </h6>
-            <p className="fs-12">{record.role}</p>
+            <p className="fs-12">{record.Role}</p>
           </div>
         </div>
       ),
-      sorter: (a: any, b: any) => a.approvedBy.localeCompare(b.approvedBy),
+      sorter: (a: any, b: any) => a.ApprovedBy.length - b.ApprovedBy.length,
     },
     {
       title: "Created Date",
-      dataIndex: "createdDate",
-      sorter: (a: any, b: any) => {
-        const aDate = new Date(a.createdDate);
-        const bDate = new Date(b.createdDate);
-        if (!isNaN(aDate.getTime()) && !isNaN(bDate.getTime())) {
-          return aDate.getTime() - bDate.getTime();
-        }
-        return String(a.createdDate).localeCompare(String(b.createdDate));
-      },
+      dataIndex: "CreatedDate",
+      sorter: (a: any, b: any) => a.CreatedDate.length - b.CreatedDate.length,
     },
     {
       title: "Status",
-      dataIndex: "status",
-      render: (text: string) => {
-        let badgeClass = "badge ";
-        if (text.toLowerCase() === "active") badgeClass += "badge-success";
-        else if (text.toLowerCase() === "inactive") badgeClass += "badge-danger";
-        else badgeClass += "badge-secondary";
-        return (
-          <span className={`${badgeClass} d-inline-flex align-items-center badge-xs`}>
-            <i className="ti ti-point-filled me-1" />
-            {text}
-          </span>
-        );
-      },
-      sorter: (a: any, b: any) => a.status.localeCompare(b.status),
+      dataIndex: "Status",
+      render: (text: string) => (
+        <span className="badge badge-success d-inline-flex align-items-center badge-xs">
+          <i className="ti ti-point-filled me-1" />
+          {text}
+        </span>
+      ),
+      sorter: (a: any, b: any) => a.Status.length - b.Status.length,
     },
     {
       title: "",
       dataIndex: "actions",
-      render: (text: any, record: any) => (
+      render: () => (
         <div className="action-icon d-inline-flex">
-          <button
-            className="btn btn-link p-0 text-danger"
-            onClick={() => handleDelete(record)}
-            title="Delete"
+          <Link
+            to="#"
+            className="me-2"
+            data-bs-toggle="modal"
+            data-inert={true}
+            data-bs-target="#edit_performance-indicator"
+          >
+            <i className="ti ti-edit" />
+          </Link>
+          <Link
+            to="#"
+            data-bs-toggle="modal"
+            data-inert={true}
+            data-bs-target="#delete_modal"
           >
             <i className="ti ti-trash" />
-          </button>
+          </Link>
         </div>
       ),
     },
@@ -187,23 +141,47 @@ const PerformanceIndicator = () => {
           <div className="card">
             <div className="card-header d-flex align-items-center justify-content-between flex-wrap row-gap-3">
               <h5>Performance Indicator List</h5>
+              <div className="d-flex my-xl-auto right-content align-items-center flex-wrap row-gap-3">
+                <div className="dropdown">
+                  <Link
+                    to="#"
+                    className="dropdown-toggle btn btn-white d-inline-flex align-items-center"
+                    data-bs-toggle="dropdown"
+                  >
+                    Sort By : Last 7 Days
+                  </Link>
+                  <ul className="dropdown-menu  dropdown-menu-end p-3">
+                    <li>
+                      <Link to="#" className="dropdown-item rounded-1">
+                        Recently Added
+                      </Link>
+                    </li>
+                    <li>
+                      <Link to="#" className="dropdown-item rounded-1">
+                        Ascending
+                      </Link>
+                    </li>
+                    <li>
+                      <Link to="#" className="dropdown-item rounded-1">
+                        Desending
+                      </Link>
+                    </li>
+                    <li>
+                      <Link to="#" className="dropdown-item rounded-1">
+                        Last Month
+                      </Link>
+                    </li>
+                    <li>
+                      <Link to="#" className="dropdown-item rounded-1">
+                        Last 7 Days
+                      </Link>
+                    </li>
+                  </ul>
+                </div>
+              </div>
             </div>
             <div className="card-body p-0">
-              {loading ? (
-                <div className="text-center p-4">
-                  <div className="spinner-border" role="status">
-                    <span className="visually-hidden">Loading...</span>
-                  </div>
-                </div>
-              ) : error ? (
-                <div className="text-center p-4">
-                  <div className="alert alert-danger" role="alert">
-                    {error}
-                  </div>
-                </div>
-              ) : (
-                <Table dataSource={data} columns={columns} Selection={true} />
-              )}
+              <Table dataSource={data} columns={columns} Selection={true} />
             </div>
           </div>
           {/* /Performance Indicator list */}
@@ -212,8 +190,7 @@ const PerformanceIndicator = () => {
       </div>
       {/* /Page Wrapper */}
 
-      <PerformanceIndicatorModal onSuccess={fetchPerformanceIndicators} />
-      {/* Removed edit modal */}
+      <PerformanceIndicatorModal />
     </>
   );
 };

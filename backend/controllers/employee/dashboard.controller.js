@@ -518,6 +518,7 @@ console.log("chek-2");
         try {
             const { companyId, employeeId } = validateEmployeeAccess(socket);
             const year = data.year || new Date().getFullYear();
+console.log("HeKLLOOO");
 
             const [
                 employeeDetails,
@@ -548,15 +549,6 @@ console.log("chek-2");
                 employeeService.getTodaysBirthday(companyId, employeeId),
                 employeeService.getLastDayTimmings(companyId, employeeId),
             ])
-            
-            if (!employeeDetails.done){
-                socket.emit("employee/dashboard/get-all-data-response", {
-                    done: false,
-                    message: "Employee not found"
-                })
-                return;
-            }
-
             socket.emit("employee/dashboard/get-all-data-response", {
                 done: true,
                 data: {

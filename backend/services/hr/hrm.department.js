@@ -127,12 +127,7 @@ export const displayDepartment = async (companyId, hrId, filters = {}) => {
                     {
                       $eq: ["$departmentId", { $toObjectId: "$$departmentId" }],
                     }, // Convert for comparison
-                    {
-                      $or: [
-                        { $eq: ["$status", "active"] },
-                        { $eq: ["$status", "Active"] }
-                      ]
-                    }
+                    { $eq: ["$status", "active"] },
                   ],
                 },
               },
