@@ -19,9 +19,9 @@ import ticketRoutes from "./routes/tickets.routes.js";
 
 
 
-import performanceIndicatorRoutes from "./routes/performanceIndicator.routes.js";
-import performanceAppraisalRoutes from "./routes/performanceAppraisal.routes.js";
-import performanceReviewRoutes from "./routes/performanceReview.routes.js";
+import performanceIndicatorRoutes from "./routes/performance/performanceIndicator.routes.js";
+import performanceAppraisalRoutes from "./routes/performance/performanceAppraisal.routes.js";
+import performanceReviewRoutes from "./routes/performance/performanceReview.routes.js";
 config();
 
 const __filename = fileURLToPath(import.meta.url);

@@ -5,9 +5,9 @@ import {
   getPerformanceReviewByIdCtrl,
   updatePerformanceReviewCtrl,
   deletePerformanceReviewCtrl,
-} from '../controllers/performance/performanceReview.controller.js';
-import { authenticateUser } from '../controllers/socialfeed/socialFeed.controller.js';
-import { validateCompanyAccess } from '../controllers/socialfeed/validation.middleware.js';
+} from '../../controllers/performance/performanceReview.controller.js';
+import { authenticateUser } from '../../controllers/socialfeed/socialFeed.controller.js';
+import { validateCompanyAccess } from '../../controllers/socialfeed/validation.middleware.js';
 
 const router = express.Router();
 

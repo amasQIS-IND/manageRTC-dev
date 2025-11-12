@@ -1987,7 +1987,6 @@ const EmployeeList = () => {
                           <textarea
                             className="form-control"
                             rows={3}
-                            defaultValue={""}
                             name="about"
                             value={formData.about}
                             onChange={handleChange}
