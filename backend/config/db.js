@@ -7,6 +7,8 @@ const uri =
 const client = new MongoClient(uri);
 let isConnected = false;
 
+export { client };
+
 export const connectDB = async () => {
   if (!isConnected) {
     try {
@@ -35,6 +37,9 @@ export const getTenantCollections = (tenantDbName) => {
     contacts: db.collection("contacts"),
     details: db.collection("details"), // for contact details
     leads: db.collection("leads"),
+    kanbanBoards: db.collection("kanbanBoards"),
+    kanbanColumns: db.collection("kanbanColumns"),
+    kanbanCards: db.collection("kanbanCards"),
 
     // Admin dashboard collections
     employees: db.collection("employees"),
@@ -102,6 +107,9 @@ export const getTenantCollections = (tenantDbName) => {
     //profile collection
     profile: db.collection("profile"),
     tickets: db.collection("tickets"),
+    ticketCategories: db.collection("ticketCategories"),
+    // jobs collection
+    jobs: db.collection("jobs"),
     candidates: db.collection("candidates"),
   };
 };

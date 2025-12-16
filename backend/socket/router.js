@@ -5,6 +5,10 @@ import pipelineController from "../controllers/pipeline/pipeline.controllers.js"
 import hrDashboardController from "../controllers/hr/hr.controller.js";
 import clientController from "../controllers/client/client.controllers.js";
 import activityController from "../controllers/activities/activities.controllers.js";
+import projectController from "../controllers/project/project.controller.js";
+import taskController from "../controllers/task/task.controller.js";
+import projectNotesController from "../controllers/notes/project.notes.controller.js";
+import hrDashboardController from "../controllers/hr/hr.controller.js";
 import { ChatController } from "../controllers/chat/chat.controller.js";
 import { ChatUsersController } from "../controllers/chat/users.controller.js";
 import userSocketController from "../controllers/user/user.socket.controller.js";
@@ -12,6 +16,7 @@ import socialFeedSocketController from "../controllers/socialfeed/socialFeed.soc
 import employeeController from "../controllers/employee/employee.controller.js";
 import notesController from "../controllers/employee/notes.controller.js";
 import ticketsSocketController from "../controllers/tickets/tickets.socket.controller.js";
+import kanbanController from "../controllers/kaban/kaban.controller.js";
 
 import jobsController from "../controllers/jobs/jobs.controllers.js";
 import candidateController from "../controllers/candidates/candidates.controllers.js";
@@ -34,7 +39,7 @@ const router = (socket, io, role) => {
     userMetadata: socket.userMetadata,
   });
 
-  // Initialize chat controller for all authenticated users
+  
   if (socket.companyId) {
     console.log("Attaching chat controller...");
     new ChatController(socket, io);
@@ -65,9 +70,18 @@ const router = (socket, io, role) => {
       clientController(socket, io);
       console.log("Attaching activity controller for admin...");
       activityController(socket, io);
+      console.log("Attaching project controller for admin...");
+      projectController(socket, io);
+      console.log("Attaching task controller for admin...");
+      taskController(socket, io);
+      console.log("Attaching project notes controller for admin...");
+      projectNotesController(socket, io);
       userSocketController(socket, io);
       console.log("Attaching social feed controller for admin...");
       socialFeedSocketController(socket, io);
+      console.log("Attaching kanban controller for admin...");
+      kanbanController(socket, io);
+
 
       // Pipelines JS
       pipelineController(socket, io);
@@ -107,6 +121,12 @@ const router = (socket, io, role) => {
       clientController(socket, io);
       console.log("Attaching activity controller for hr...");
       activityController(socket, io);
+      console.log("Attaching project controller for hr...");
+      projectController(socket, io);
+      console.log("Attaching task controller for hr...");
+      taskController(socket, io);
+      console.log("Attaching project notes controller for hr...");
+      projectNotesController(socket, io);
       userSocketController(socket, io);
       console.log("Attaching social feed controller for hr...");
       socialFeedSocketController(socket, io);
@@ -120,6 +140,8 @@ const router = (socket, io, role) => {
       jobsController(socket, io);
       console.log("Attaching candidate controller for hr...");
       candidateController(socket, io);
+      console.log("Attaching kanban controller for hr...");
+      kanbanController(socket, io);
 
       performanceIndicatorController(socket, io);
       performanceAppraisalController(socket, io);
@@ -142,11 +164,15 @@ const router = (socket, io, role) => {
       userSocketController(socket, io);
       console.log("Attaching social feed controller for leads...");
       socialFeedSocketController(socket, io);
+      console.log("Attaching kanban controller for leads...");
+      kanbanController(socket, io);
       break;
 
     case "employee":
       console.log("Attaching Employee controller...");
       employeeController(socket, io);
+      console.log("Attaching project controller for employee...");
+      projectController(socket, io);
       break;
 
     default:
