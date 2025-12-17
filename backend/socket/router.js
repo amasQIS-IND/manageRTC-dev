@@ -18,6 +18,7 @@ import notesController from "../controllers/employee/notes.controller.js";
 import ticketsSocketController from "../controllers/tickets/tickets.socket.controller.js";
 import assetSocketController from "../controllers/assets/asset.socket.controller.js";
 import assetCategorySocketController from "../controllers/assets/assetCategory.socket.controller.js";
+import kanbanController from "../controllers/kaban/kaban.controller.js";
 
 import jobsController from "../controllers/jobs/jobs.controllers.js";
 import candidateController from "../controllers/candidates/candidates.controllers.js";
