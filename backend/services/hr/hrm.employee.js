@@ -42,7 +42,18 @@ export const getEmployeesStats = async (companyId, hrId, filters = {}) => {
     const pipeline = [
       {
         $addFields: {
-          dateOfJoining: { $toDate: "$dateOfJoining" },
+          dateOfJoining: {
+            $cond: {
+              if: {
+                $or: [
+                  { $eq: ["$dateOfJoining", ""] },
+                  { $eq: ["$dateOfJoining", null] },
+                ],
+              },
+              then: null,
+              else: { $toDate: "$dateOfJoining" },
+            },
+          },
         },
       },
       {
@@ -51,6 +62,7 @@ export const getEmployeesStats = async (companyId, hrId, filters = {}) => {
           ...(start || end
             ? {
                 dateOfJoining: {
+                  $ne: null,
                   ...(start ? { $gte: start } : {}),
                   ...(end ? { $lte: end } : {}),
                 },
@@ -2185,6 +2197,50 @@ export const getExperienceInfoByEmpId = async (companyId, employeeId) => {
     return {
       done: false,
       error: "Internal server error",
+      systemError:
+        process.env.NODE_ENV === "development" ? error.message : undefined,
+    };
+  }
+};
+
+export const checkPhoneExists = async (companyId, phone, excludeEmployeeId = null) => {
+  try {
+    if (!companyId || !phone) {
+      return { done: false, error: "Missing required parameters" };
+    }
+
+    const collections = getTenantCollections(companyId);
+    
+    // Build query to check phone existence
+    const query = { "contact.phone": phone };
+    
+    // If updating an employee, exclude their own record from the check
+    if (excludeEmployeeId) {
+      query._id = { $ne: new ObjectId(excludeEmployeeId) };
+    }
+
+    const existingEmployee = await collections.employees.findOne(query, {
+      projection: { employeeId: 1, firstName: 1, lastName: 1 },
+    });
+
+    if (existingEmployee) {
+      return {
+        done: false,
+        exists: true,
+        error: `Phone number already registered to ${existingEmployee.firstName} ${existingEmployee.lastName} (${existingEmployee.employeeId})`,
+      };
+    }
+
+    return {
+      done: true,
+      exists: false,
+      message: "Phone number is available",
+    };
+  } catch (error) {
+    console.error("Error checking phone existence:", error);
+    return {
+      done: false,
+      error: "Failed to check phone number",
       systemError:
         process.env.NODE_ENV === "development" ? error.message : undefined,
     };
