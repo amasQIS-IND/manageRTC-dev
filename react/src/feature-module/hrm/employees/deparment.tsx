@@ -19,6 +19,14 @@ interface Departments {
   _id: string;
   department: string;
   employeeCount: number;
+  designationCount?: number;  // NEW: Count of designations in this department
+  status: string;
+}
+
+interface Designation {
+  _id: string;
+  designation: string;
+  departmentId: string;
   status: string;
 }
 
@@ -162,6 +170,22 @@ const Department = () => {
         </span>
       ),
       sorter: (a: any, b: any) => a.employeeCount - b.employeeCount,
+    },
+    {
+      title: "No of Designations",
+      dataIndex: "designationCount",
+      render: (count: number, record: any) => (
+        <span className="fw-medium">
+          {count > 0 ? (
+            <Link to={`${all_routes.designations}?department=${encodeURIComponent(record._id)}`}>
+              {count}
+            </Link>
+          ) : (
+            <span className="text-muted">0</span>
+          )}
+        </span>
+      ),
+      sorter: (a: any, b: any) => (a.designationCount || 0) - (b.designationCount || 0),
     },
     {
       title: "Status",

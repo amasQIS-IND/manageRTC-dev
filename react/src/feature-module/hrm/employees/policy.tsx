@@ -9,18 +9,27 @@ import { useSocket } from "../../../SocketContext";
 import { Socket } from "socket.io-client";
 import { DateTime } from 'luxon';
 import Footer from "../../../core/common/footer";
+import DepartmentDesignationSelector, { DepartmentDesignationMapping } from '../../../components/DepartmentDesignationSelector';
 
 interface Policy {
   _id: string,
   policyName: string;
-  department: string;
   policyDescription: string;
   effectiveDate: string;
+  assignTo?: DepartmentDesignationMapping[];  // Department-Designation mappings
 }
 
 interface Department {
   _id: string;
   department: string;
+  status: string;
+}
+
+interface Designation {
+  _id: string;
+  designation: string;
+  departmentId: string;
+  status: string;
 }
 
 const staticOptions = [
@@ -38,6 +47,7 @@ const Policy = () => {
   const [filters, setFilters] = useState({ department: "", startDate: "", endDate: "" });
   const [policyToDelete, setPolicyToDelete] = useState<Policy | null>(null);
   const [departments, setDepartments] = useState<Department[]>([]);
+  const [designations, setDesignations] = useState<Designation[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [responseData, setResponseData] = useState(null);
@@ -47,6 +57,12 @@ const Policy = () => {
   const [policyLoading, setPolicyLoading] = useState(false);
   const [departmentLoading, setDepartmentLoading] = useState(false);
   const [selectedFilterDepartment, setSelectedFilterDepartment] = useState<string>("");
+  
+  // NEW: State for Apply To mappings
+  const [applyToMappings, setApplyToMappings] = useState<DepartmentDesignationMapping[]>([]);
+  
+  // State for viewing policy details
+  const [viewingPolicy, setViewingPolicy] = useState<Policy | null>(null);
 
   const socket = useSocket() as Socket | null;
 
@@ -70,6 +86,9 @@ const Policy = () => {
 
     setDepartmentLoading(true);
     socket.emit("hr/departments/get");
+    
+    // NEW: Fetch designations using the same pattern as designations.tsx
+    socket.emit("hrm/designations/get");
 
     const handleAddPolicyResponse = (response: any) => {
       if (!isMounted) return;
@@ -148,11 +167,24 @@ const Policy = () => {
       }
     }
 
+    const handleDesignationsResponse = (response: any) => {
+      if (!isMounted) return;
+
+      if (response.done) {
+        setDesignations(response.data);
+        setLoading(false);
+      } else {
+        setError(response.error || "Failed to fetch designations");
+        setLoading(false);
+      }
+    }
+
     socket.on("hr/policy/add-response", handleAddPolicyResponse);
     socket.on("hr/policy/get-response", handleGetPolicyResponse);
     socket.on("hr/policy/update-response", handleUpdatePolicyResponse);
     socket.on("hr/policy/delete-response", handleDeletePolicyResponse);
     socket.on("hr/departments/get-response", handleDepartmentsResponse);
+    socket.on("hrm/designations/get-response", handleDesignationsResponse);
 
     return () => {
       isMounted = false;
@@ -162,6 +194,7 @@ const Policy = () => {
       socket.off("hr/policy/update-response", handleUpdatePolicyResponse);
       socket.off("hr/policy/delete-response", handleDeletePolicyResponse);
       socket.off("hr/departments/get-response", handleDepartmentsResponse);
+      socket.off("hrm/designations/get-response", handleDesignationsResponse);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket]);
@@ -190,28 +223,57 @@ const Policy = () => {
     {
       title: "Name",
       dataIndex: "policyName",
-      render: (text: String, record: any) => (
-        <h6 className="fw-medium fs-14 text-dark">{text}</h6>
+      render: (text: String, record: Policy) => (
+        <h6 
+          className="fw-medium fs-14 text-dark" 
+          style={{ cursor: 'pointer' }}
+          onClick={() => setViewingPolicy(record)}
+          data-bs-toggle="modal"
+          data-bs-target="#view_policy"
+        >
+          {text}
+        </h6>
       ),
       sorter: (a: any, b: any) => a.Name.length - b.Name.length,
     },
     {
-      title: "Department",
-      dataIndex: "department",
-      render: (departmentId: string) => (
-        <h6 className="fw-normal fs-14 text-dark">
-          {getDepartmentName(departmentId)}
-        </h6>
-      ),
-      sorter: (a: any, b: any) => 
-        getDepartmentName(a.department).localeCompare(getDepartmentName(b.department)),
+      title: "Assign To",
+      dataIndex: "assignTo",
+      render: (assignTo: DepartmentDesignationMapping[]) => {
+        if (!assignTo || assignTo.length === 0) {
+          return <span className="text-muted">Not assigned</span>;
+        }
+        const deptNames = assignTo.map(a => a.departmentName).join(", ");
+        return (
+          <h6 className="fw-normal fs-14 text-dark">
+            {deptNames.length > 50 ? `${deptNames.substring(0, 50)}...` : deptNames}
+          </h6>
+        );
+      },
+      sorter: (a: any, b: any) => {
+        const aName = a.assignTo?.[0]?.departmentName || "";
+        const bName = b.assignTo?.[0]?.departmentName || "";
+        return aName.localeCompare(bName);
+      },
     },
     {
       title: "Description",
       dataIndex: "policyDescription",
       sorter: (a: any, b: any) => a.Description.length - b.Description.length,
-      render: (text: String, record: any) => (
-        <h6 className="fw-normal fs-14 text-muted">{text}</h6>
+      render: (text: string, record: any) => (
+        <h6 
+          className="fw-normal fs-14 text-muted mb-0"
+          style={{
+            maxWidth: '300px',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            cursor: text && text.length > 50 ? 'help' : 'default'
+          }}
+          title={text || ''}
+        >
+          {text || 'No description'}
+        </h6>
       ),
     },
     {
@@ -230,8 +292,27 @@ const Policy = () => {
             className="me-2"
             data-bs-toggle="modal"
             data-inert={true}
+            data-bs-target="#view_policy"
+            onClick={() => setViewingPolicy(policy)}
+          >
+            <i className="ti ti-eye" />
+          </Link>
+          <Link
+            to="#"
+            className="me-2"
+            data-bs-toggle="modal"
+            data-inert={true}
             data-bs-target="#edit_policy"
-            onClick={() => { setEditingPolicy(policy); }}
+            onClick={() => { 
+              setEditingPolicy(policy);
+              // Initialize mappings from policy data
+              if (policy.assignTo && policy.assignTo.length > 0) {
+                setApplyToMappings(policy.assignTo);
+              } else {
+                // Fallback for backward compatibility - if no assignTo, create empty mappings
+                setApplyToMappings([]);
+              }
+            }}
           >
             <i className="ti ti-edit" />
           </Link>
@@ -272,8 +353,8 @@ const Policy = () => {
         return;
       }
 
-      if (!selectedDepartment) {
-        setError("Department is required");
+      if (!applyToMappings || applyToMappings.length === 0) {
+        setError("Please select at least one department to apply this policy");
         return;
       }
 
@@ -286,7 +367,7 @@ const Policy = () => {
 
       const payload = {
         policyName,
-        department: selectedDepartment,
+        assignTo: applyToMappings,
         policyDescription: description,
         effectiveDate,
       };
@@ -376,7 +457,7 @@ const Policy = () => {
   const handleUpdateSubmit = (editingPolicy: Policy) => {
     try {
       setError(null);
-      const { _id, policyName, effectiveDate, department, policyDescription } = editingPolicy;
+      const { _id, policyName, effectiveDate, policyDescription } = editingPolicy;
 
       if (!_id) {
         setError("Id not found");
@@ -393,8 +474,8 @@ const Policy = () => {
         return;
       }
 
-      if (!department) {
-        setError("Department is required");
+      if (!applyToMappings || applyToMappings.length === 0) {
+        setError("Please select at least one department to apply this policy");
         return;
       }
 
@@ -409,7 +490,7 @@ const Policy = () => {
         _id,
         policyName,
         policyDescription,
-        department,
+        assignTo: applyToMappings,
         effectiveDate,
       };
 
@@ -541,6 +622,14 @@ const Policy = () => {
                   data-inert={true}
                   data-bs-target="#add_policy"
                   className="btn btn-primary d-flex align-items-center"
+                  onClick={() => {
+                    setPolicyName("");
+                    setEffectiveDate("");
+                    setDescription("");
+                    setSelectedDepartment(staticOptions[0].value);
+                    setApplyToMappings([]);
+                    setError(null);
+                  }}
                 >
                   <i className="ti ti-circle-plus me-2" />
                   Add Policy
@@ -665,6 +754,7 @@ const Policy = () => {
                   setEffectiveDate("");
                   setDescription("");
                   setSelectedDepartment(staticOptions[0].value);
+                  setApplyToMappings([]);  // NEW: Reset mappings
                   setError(null);
                 }}
               >
@@ -688,21 +778,15 @@ const Policy = () => {
                     </div>
                   </div>
                   <div className="col-md-12">
-                    <div className="mb-3">
-                      <label className="form-label">Department</label>
-                      <CommonSelect
-                        className="select"
-                        options={options}
-                        defaultValue={selectedDepartment}
-                        onChange={(option) =>
-                          setSelectedDepartment(
-                            typeof option === 'string'
-                              ? option
-                              : option?.value || options[0].value
-                          )
-                        }
-                      />
-                    </div>
+                    <DepartmentDesignationSelector
+                      departments={departments}
+                      designations={designations}
+                      selectedMappings={applyToMappings}
+                      onChange={setApplyToMappings}
+                      label="Apply To"
+                      required={true}
+                      helpText="Toggle departments ON to apply this policy, then customize designation selections as needed"
+                    />
                   </div>
                   <div className="col-md-12">
                     <div className="mb-3">
@@ -731,6 +815,14 @@ const Policy = () => {
                   type="button"
                   className="btn btn-white border me-2"
                   data-bs-dismiss="modal"
+                  onClick={() => {
+                    setPolicyName("");
+                    setEffectiveDate("");
+                    setDescription("");
+                    setSelectedDepartment(staticOptions[0].value);
+                    setApplyToMappings([]);
+                    setError(null);
+                  }}
                 >
                   Cancel
                 </button>
@@ -789,19 +881,15 @@ const Policy = () => {
                     </div>
                   </div>
                   <div className="col-md-12">
-                    <div className="mb-3">
-                      <label className="form-label">Department</label>
-                      <CommonSelect
-                        className="select"
-                        options={options}
-                        defaultValue={options.find(d => d.value === editingPolicy?.department) || options[0]}
-                        onChange={(selectedOption) =>
-                          setEditingPolicy(prev =>
-                            prev ? { ...prev, department: selectedOption?.value || "" } : prev
-                          )
-                        }
-                      />
-                    </div>
+                    <DepartmentDesignationSelector
+                      departments={departments}
+                      designations={designations}
+                      selectedMappings={applyToMappings}
+                      onChange={setApplyToMappings}
+                      label="Apply To"
+                      required={true}
+                      helpText="Toggle departments ON to apply this policy, then customize designation selections as needed"
+                    />
                   </div>
                   <div className="col-md-12">
                     <div className="mb-3">
@@ -893,6 +981,129 @@ const Policy = () => {
         </div>
       </div>
       {/*delete policy*/}
+      {/* View Policy */}
+      <div className="modal fade" id="view_policy">
+        <div className="modal-dialog modal-dialog-centered modal-lg">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h4 className="modal-title">Policy Details</h4>
+              <button
+                type="button"
+                className="btn-close custom-btn-close"
+                data-bs-dismiss="modal"
+                aria-label="Close"
+              >
+                <i className="ti ti-x" />
+              </button>
+            </div>
+            <div className="modal-body">
+              {viewingPolicy && (
+                <div className="policy-details-container">
+                  {/* Policy Name */}
+                  <div className="mb-4">
+                    <div className="d-flex align-items-center mb-2">
+                      <i className="ti ti-file-text text-primary me-2 fs-20"></i>
+                      <h5 className="mb-0 text-muted">Policy Name</h5>
+                    </div>
+                    <div className="ps-4">
+                      <p className="fs-16 mb-0">{viewingPolicy.policyName}</p>
+                    </div>
+                  </div>
+
+                  {/* In-effect Date */}
+                  <div className="mb-4">
+                    <div className="d-flex align-items-center mb-2">
+                      <i className="ti ti-calendar text-primary me-2 fs-20"></i>
+                      <h5 className="mb-0 text-muted">In-effect Date</h5>
+                    </div>
+                    <div className="ps-4">
+                      <p className="fs-16 mb-0">
+                        {DateTime.fromISO(viewingPolicy.effectiveDate).toFormat("dd MMMM yyyy")}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Apply To - Department & Designations */}
+                  <div className="mb-4">
+                    <div className="d-flex align-items-center mb-3">
+                      <i className="ti ti-users text-primary me-2 fs-20"></i>
+                      <h5 className="mb-0 text-muted">Applicable To</h5>
+                    </div>
+                    <div className="ps-4">
+                      {viewingPolicy.assignTo && viewingPolicy.assignTo.length > 0 ? (
+                        <div className="departments-list">
+                          {viewingPolicy.assignTo.map((mapping, index) => {
+                            const deptDesignations = designations.filter(
+                              d => mapping.designationIds.includes(d._id)
+                            );
+                            return (
+                              <div key={index} className="mb-3 border rounded p-3 bg-light">
+                                <div className="d-flex align-items-center mb-2">
+                                  <i className="ti ti-building text-success me-2"></i>
+                                  <strong className="text-dark">{mapping.departmentName}</strong>
+                                  <span className="badge bg-primary ms-2">
+                                    {mapping.designationIds.length} designation{mapping.designationIds.length !== 1 ? 's' : ''}
+                                  </span>
+                                </div>
+                                {deptDesignations.length > 0 && (
+                                  <div className="ms-4 mt-2">
+                                    <div className="d-flex flex-wrap gap-2">
+                                      {deptDesignations.map(designation => (
+                                        <span 
+                                          key={designation._id} 
+                                          className="badge bg-secondary"
+                                        >
+                                          <i className="ti ti-user-check me-1"></i>
+                                          {designation.designation}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="text-muted mb-0">
+                          <i className="ti ti-info-circle me-1"></i>
+                          Not assigned to any department or designation
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Policy Description */}
+                  <div className="mb-3">
+                    <div className="d-flex align-items-center mb-2">
+                      <i className="ti ti-file-description text-primary me-2 fs-20"></i>
+                      <h5 className="mb-0 text-muted">Description</h5>
+                    </div>
+                    <div className="ps-4">
+                      <div className="border rounded p-3 bg-light">
+                        <p className="mb-0" style={{ whiteSpace: 'pre-wrap' }}>
+                          {viewingPolicy.policyDescription || 'No description provided'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="btn btn-light"
+                data-bs-dismiss="modal"
+              >
+                <i className="ti ti-x me-1"></i>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      {/* /View Policy */}
     </>
 
   )

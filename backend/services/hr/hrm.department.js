@@ -16,7 +16,7 @@ export const allDepartments = async (companyId, hrId) => {
     // if (!hrExists) return { done: false, error: "HR not found" };
 
     const result = await collections.departments
-      .find({ status: "active" }, { projection: { department: 1, _id: 1 } })
+      .find({ status: "active" }, { projection: { department: 1, _id: 1, status: 1 } })
       .toArray();
 
     return {
@@ -129,11 +129,38 @@ export const displayDepartment = async (companyId, hrId, filters = {}) => {
         },
       },
       {
-        $addFields: {
-          employeeCount: { $size: "$employees" },
+        $lookup: {
+          from: "designations",
+          let: { deptIdStr: "$departmentIdString" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    {
+                      $eq: ["$departmentId", "$$deptIdStr"],
+                    },
+                    {
+                      $or: [
+                        { $eq: ["$status", "active"] },
+                        { $eq: ["$status", "Active"] }
+                      ]
+                    }
+                  ],
+                },
+              },
+            },
+          ],
+          as: "designations",
         },
       },
-      { $project: { employees: 0, departmentIdString: 0 } },
+      {
+        $addFields: {
+          employeeCount: { $size: "$employees" },
+          designationCount: { $size: "$designations" },
+        },
+      },
+      { $project: { employees: 0, designations: 0, departmentIdString: 0 } },
     ];
 
     const departments = await collections.departments

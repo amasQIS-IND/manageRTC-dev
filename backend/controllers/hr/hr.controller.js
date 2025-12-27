@@ -440,11 +440,6 @@ const hrDashboardController = (socket, io) => {
             ? payload.policyName.trim()
             : "";
 
-        const department =
-          typeof payload.department === "string"
-            ? payload.department.trim()
-            : "";
-
         const description =
           typeof payload.policyDescription === "string"
             ? payload.policyDescription.trim()
@@ -454,11 +449,14 @@ const hrDashboardController = (socket, io) => {
         const dt = DateTime.fromFormat(rawDate, "yyyy-MM-dd", { zone: "utc" });
         const now = DateTime.utc();
 
+        // Extract assignTo mappings (department-designation mappings)
+        const assignTo = Array.isArray(payload.assignTo) ? payload.assignTo : [];
+
         if (!policyName) {
           throw new Error("Policy name is required");
         }
-        if (!department) {
-          throw new Error("Department is required");
+        if (!assignTo || assignTo.length === 0) {
+          throw new Error("Please select at least one department to assign this policy");
         }
         if (!description) {
           throw new Error("Description is required");
@@ -476,7 +474,7 @@ const hrDashboardController = (socket, io) => {
 
         const policyData = {
           policyName,
-          department,
+          assignTo,
           effectiveDate,
           policyDescription: description,
         };
@@ -542,9 +540,6 @@ const hrDashboardController = (socket, io) => {
         const policyName =
           typeof data.policyName === "string" ? data.policyName.trim() : "";
 
-        const department =
-          typeof data.department === "string" ? data.department.trim() : "";
-
         const description =
           typeof data.policyDescription === "string"
             ? data.policyDescription.trim()
@@ -555,11 +550,14 @@ const hrDashboardController = (socket, io) => {
         const formattedDate = dt.toFormat("yyyy-MM-dd");
         const now = DateTime.utc();
 
+        // Extract assignTo mappings (department-designation mappings)
+        const assignTo = Array.isArray(data.assignTo) ? data.assignTo : [];
+
         if (!policyName) {
           throw new Error("Policy name is required");
         }
-        if (!department) {
-          throw new Error("Department is required");
+        if (!assignTo || assignTo.length === 0) {
+          throw new Error("Please select at least one department to assign this policy");
         }
         if (!description) {
           throw new Error("Description is required");
@@ -575,7 +573,7 @@ const hrDashboardController = (socket, io) => {
         const payload = {
           policyId,
           policyName,
-          department,
+          assignTo,
           effectiveDate: formattedDate,
           policyDescription: description,
         };
