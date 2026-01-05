@@ -33,7 +33,7 @@ jobs:
           source: "backend.tar.gz"
           target: "/home/${{ secrets.VPS_USER }}/"
 
-      - name: Deploy to /var/www/api.dev.manage-rtc.com/backend and restart pm2
+      - name: Deploy to /var/www/api-dev.manage-rtc.com/backend and restart pm2
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VPS_HOST }}
@@ -45,10 +45,10 @@ jobs:
             tar -xzf ~/backend.tar.gz -C ~/releases/backend
             rm -f ~/backend.tar.gz
 
-            mkdir -p /var/www/api.dev.manage-rtc.com/backend
-            rsync -a --delete ~/releases/backend/ /var/www/api.dev.manage-rtc.com/backend/
+            mkdir -p /var/www/api-dev.manage-rtc.com/backend
+            rsync -a --delete ~/releases/backend/ /var/www/api-dev.manage-rtc.com/backend/
 
-            cd /var/www/api.dev.manage-rtc.com/backend
+            cd /var/www/api-dev.manage-rtc.com/backend
 
             cat > .env << 'EOF'
             PORT=${{ secrets.ENV_PORT }}
