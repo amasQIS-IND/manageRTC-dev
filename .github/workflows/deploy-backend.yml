@@ -46,8 +46,11 @@ jobs:
             tar -xzf ~/backend.tar.gz -C ~/releases/backend
             rm -f ~/backend.tar.gz
 
-            # Clean up node_modules before rsync to avoid permission issues
-            rm -rf /var/www/apidev.manage-rtc.com/backend/node_modules
+            # Clean up node_modules with sudo to avoid permission issues
+            sudo rm -rf /var/www/apidev.manage-rtc.com/backend/node_modules
+
+            # Ensure correct ownership of the backend directory
+            sudo chown -R $USER:$USER /var/www/apidev.manage-rtc.com/backend
 
             # Sync files (exclude node_modules since we'll do npm ci anyway)
             rsync -a --delete --exclude='node_modules' ~/releases/backend/ /var/www/apidev.manage-rtc.com/backend/
