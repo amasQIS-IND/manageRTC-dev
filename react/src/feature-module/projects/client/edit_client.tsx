@@ -4,7 +4,6 @@ import { Socket } from 'socket.io-client';
 import { message } from 'antd';
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
-import { hideModal, cleanupModalBackdrops } from '../../../utils/modalUtils';
 
 interface ClientFormData {
   _id: string;
@@ -261,8 +260,29 @@ const EditClient = () => {
   };
 
   const closeModal = () => {
-    hideModal('edit_client');
-  };
+    const modal = document.getElementById('edit_client');
+    if (!modal) return;
+
+    try {
+      // Method 1: Try Bootstrap Modal API
+      if ((window as any).bootstrap && (window as any).bootstrap.Modal) {
+        const bootstrapModal = (window as any).bootstrap.Modal.getInstance(modal);
+        if (bootstrapModal) {
+          bootstrapModal.hide();
+          return;
+        }
+      }
+
+      // Method 2: Try jQuery Bootstrap Modal
+      if ((window as any).$ && (window as any).$.fn && (window as any).$.fn.modal) {
+        (window as any).$('#edit_client').modal('hide');
+        return;
+      }
+
+      // Method 3: Manual modal closing (fallback)
+      modal.style.display = 'none';
+      modal.classList.remove('show');
+      modal.setAttribute('aria-hidden', 'true');
       modal.removeAttribute('aria-modal');
       
       // Remove backdrop

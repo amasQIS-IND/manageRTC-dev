@@ -11,7 +11,6 @@ import CollapseHeader from "../../../core/common/collapse-header/collapse-header
 import { format } from "date-fns";
 import { message, Popconfirm } from "antd";
 import Footer from "../../../core/common/footer";
-import { hideModal, cleanupModalBackdrops } from "../../../utils/modalUtils";
 
 
 interface Activity {
@@ -119,10 +118,31 @@ const Activity = () => {
     }
   }, []);
 
-  // ✅ Modal closing function using centralized utility
+  // ✅ NEW: Robust modal closing function
   const closeModal = useCallback((modalId: string) => {
-    hideModal(modalId);
-  }, []);
+    const modal = document.getElementById(modalId);
+    if (!modal) return;
+
+    try {
+      // Method 1: Try Bootstrap Modal API
+      if ((window as any).bootstrap && (window as any).bootstrap.Modal) {
+        const bootstrapModal = (window as any).bootstrap.Modal.getInstance(
+          modal
+        );
+        if (bootstrapModal) {
+          bootstrapModal.hide();
+          return;
+        }
+      }
+
+      // Method 2: Try jQuery Bootstrap Modal
+      if (
+        (window as any).$ &&
+        (window as any).$.fn &&
+        (window as any).$.fn.modal
+      ) {
+        (window as any).$(`#${modalId}`).modal("hide");
+        return;
       }
 
       // Method 3: Manual modal closing (fallback)
