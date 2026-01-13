@@ -12,9 +12,14 @@ import { useSocket } from "../../../SocketContext";
 import { Socket } from "socket.io-client";
 import { toast, ToastContainer } from "react-toastify";
 import Footer from "../../../core/common/footer";
+import PromotionDetailsModal from '../../../core/modals/PromotionDetailsModal';
+import ResignationDetailsModal from '../../../core/modals/ResignationDetailsModal';
 
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
+
+// Declare Bootstrap type for modal
+declare const bootstrap: any;
 
 type PasswordField = "password" | "confirmPassword";
 
@@ -232,6 +237,53 @@ interface Policy {
     effectiveDate: string;
     applyToAll?: boolean;  // When true, policy applies to all employees
     assignTo?: DepartmentDesignationMapping[];
+}
+
+interface Promotion {
+    _id: string;
+    employee: {
+        id: string;
+        name: string;
+        image: string;
+    };
+    promotionFrom: {
+        department: {
+            id: string;
+            name: string;
+        };
+        designation: {
+            id: string;
+            name: string;
+        };
+    };
+    promotionTo: {
+        department: {
+            id: string;
+            name: string;
+        };
+        designation: {
+            id: string;
+            name: string;
+        };
+    };
+    promotionDate: string;
+    promotionType?: string;
+    reason?: string;
+    notes?: string;
+}
+
+interface Resignation {
+    resignationId: string;
+    employeeName: string;
+    employeeId: string;
+    employeeImage?: string;
+    department: string;
+    departmentId: string;
+    designation?: string;
+    resignationDate: string;
+    noticeDate: string;
+    reason?: string;
+    notes?: string;
 }
 
 const EmployeeDetails = () => {
@@ -886,6 +938,12 @@ const EmployeeDetails = () => {
     const [policies, setPolicies] = useState<Policy[]>([]);
     const [policiesLoading, setPoliciesLoading] = useState(false);
     const [viewingPolicy, setViewingPolicy] = useState<Policy | null>(null);
+    const [department, setDepartment] = useState<Option[]>([]);
+    const [designation, setDesignation] = useState<Option[]>([]);
+    const [promotions, setPromotions] = useState<Promotion[]>([]);
+    const [promotionsLoading, setPromotionsLoading] = useState(false);
+    const [resignations, setResignations] = useState<Resignation[]>([]);
+    const [resignationsLoading, setResignationsLoading] = useState(false);
 
     // Initialize edit form data when employee data is loaded
     useEffect(() => {
@@ -1059,6 +1117,26 @@ const EmployeeDetails = () => {
         }
     };
 
+    const handleDepartmentResponse = (response: any) => {
+        if (response.done && Array.isArray(response.data)) {
+            const mappedDepartments = response.data.map((d: any) => ({
+                value: d._id,
+                label: d.department,
+            }));
+            setDepartment([{ value: "", label: "Select" }, ...mappedDepartments]);
+        }
+    };
+
+    const handleDesignationResponse = (response: any) => {
+        if (response.done && Array.isArray(response.data)) {
+            const mappedDesignations = response.data.map((d: any) => ({
+                value: d._id,
+                label: d.designation,
+            }));
+            setDesignation([{ value: "", label: "Select" }, ...mappedDesignations]);
+        }
+    };
+
     useEffect(() => {
         if (!socket || !employeeId) return;
 
@@ -1081,6 +1159,19 @@ const EmployeeDetails = () => {
         // Fetch policies
         setPoliciesLoading(true);
         socket.emit("hr/policy/get");
+        
+        // Fetch departments for Edit Employee modal
+        socket.emit("hr/departments/get");
+
+        // Fetch promotions for this employee
+        setPromotionsLoading(true);
+        console.log('[EmployeeDetails] Emitting promotion:getAll');
+        socket.emit("promotion:getAll", {});
+
+        // Fetch resignations for this employee
+        setResignationsLoading(true);
+        console.log('[EmployeeDetails] Emitting hr/resignation/resignationlist');
+        socket.emit("hr/resignation/resignationlist", { type: "alltime" });
 
         const handleDetailsResponse = (response: any) => {
             if (!isMounted) return;
@@ -1254,6 +1345,59 @@ const EmployeeDetails = () => {
             }
         };
 
+        const handleGetPromotionsResponse = (response: any) => {
+            console.log('[EmployeeDetails] Received promotions response:', response);
+            setPromotionsLoading(false);
+            if (!isMounted) return;
+
+            if (response.done) {
+                console.log('[EmployeeDetails] Setting promotions, count:', response.data?.length || 0);
+                console.log('[EmployeeDetails] Promotion data:', response.data);
+                setPromotions(response.data || []);
+            } else {
+                console.error("[EmployeeDetails] Failed to fetch promotions:", response.error);
+                setPromotions([]);
+            }
+        };
+
+        // Handle promotion create/update to refresh the list automatically
+        const handlePromotionCreateResponse = (response: any) => {
+            if (!isMounted) return;
+            
+            if (response.done) {
+                // Refresh promotions list to show the new promotion
+                socket.emit("promotion:getAll", {});
+                // Also refresh employee details as they might have changed
+                socket.emit("hrm/employees/get-details", { employeeId: employeeId });
+            }
+        };
+
+        const handlePromotionUpdateResponse = (response: any) => {
+            if (!isMounted) return;
+            
+            if (response.done) {
+                // Refresh promotions list to show updated promotion
+                socket.emit("promotion:getAll", {});
+                // Also refresh employee details as they might have changed
+                socket.emit("hrm/employees/get-details", { employeeId: employeeId });
+            }
+        };
+
+        const handleGetResignationsResponse = (response: any) => {
+            console.log('[EmployeeDetails] Received resignations response:', response);
+            setResignationsLoading(false);
+            if (!isMounted) return;
+
+            if (response.done) {
+                console.log('[EmployeeDetails] Setting resignations, count:', response.data?.length || 0);
+                console.log('[EmployeeDetails] Resignation data:', response.data);
+                setResignations(response.data || []);
+            } else {
+                console.error("[EmployeeDetails] Failed to fetch resignations:", response.error);
+                setResignations([]);
+            }
+        };
+
         socket.on("hrm/employees/get-details-response", handleDetailsResponse);
         socket.on("hrm/employees/update-response", handleUpdateEmployeeResponse);
         socket.on("hrm/employees/update-bank-response", handleBankUpdateResponse);
@@ -1264,6 +1408,12 @@ const EmployeeDetails = () => {
         socket.on("hrm/employees/update-experience-response", handleExperienceResponse);
         socket.on("hrm/employees/update-about-response", handleAboutResponse);
         socket.on("hr/policy/get-response", handleGetPolicyResponse);
+        socket.on("hr/departments/get-response", handleDepartmentResponse);
+        socket.on("hrm/designations/get-response", handleDesignationResponse);
+        socket.on("promotion:getAll:response", handleGetPromotionsResponse);
+        socket.on("promotion:create:response", handlePromotionCreateResponse);
+        socket.on("promotion:update:response", handlePromotionUpdateResponse);
+        socket.on("hr/resignation/resignationlist-response", handleGetResignationsResponse);
 
         return () => {
             socket.off("hrm/employees/get-details-response", handleDetailsResponse);
@@ -1276,6 +1426,12 @@ const EmployeeDetails = () => {
             socket.off("hrm/employees/update-experience-response", handleExperienceResponse);
             socket.off("hrm/employees/update-about-response", handleAboutResponse);
             socket.off("hr/policy/get-response", handleGetPolicyResponse);
+            socket.off("hr/departments/get-response", handleDepartmentResponse);
+            socket.off("hrm/designations/get-response", handleDesignationResponse);
+            socket.off("promotion:getAll:response", handleGetPromotionsResponse);
+            socket.off("promotion:create:response", handlePromotionCreateResponse);
+            socket.off("promotion:update:response", handlePromotionUpdateResponse);
+            socket.off("hr/resignation/resignationlist-response", handleGetResignationsResponse);
             isMounted = false;
             clearTimeout(timeoutId);
         };
@@ -1305,6 +1461,114 @@ const EmployeeDetails = () => {
     };
 
     const applicablePolicies = getApplicablePolicies();
+
+    // Get employee's most recent promotion (if any)
+    const getEmployeePromotion = (): Promotion | null => {
+        if (!employee || !promotions.length) {
+            console.log('[EmployeeDetails] No promotion data:', { 
+                hasEmployee: !!employee, 
+                promotionsCount: promotions.length 
+            });
+            return null;
+        }
+
+        console.log('[EmployeeDetails] Checking promotions:', {
+            employeeId: employee._id,
+            employeeEmployeeId: employee.employeeId,
+            totalPromotions: promotions.length,
+            promotionEmployeeIds: promotions.map(p => ({
+                promotionId: p._id,
+                employeeId: p.employee?.id,
+                employeeName: p.employee?.name
+            }))
+        });
+
+        // Filter promotions for this specific employee
+        // Check multiple possible ID fields to ensure we find the promotion
+        const employeePromotions = promotions.filter(promo => {
+            const promoEmployeeId = promo.employee?.id;
+            const matches = promoEmployeeId === employee._id || 
+                           promoEmployeeId === employee.employeeId ||
+                           promoEmployeeId === employeeId; // Also check the route param
+            
+            if (matches) {
+                console.log('[EmployeeDetails] Found matching promotion:', promo);
+            }
+            
+            return matches;
+        });
+
+        console.log('[EmployeeDetails] Filtered promotions for employee:', employeePromotions.length);
+
+        if (employeePromotions.length === 0) return null;
+
+        // Sort by promotion date (most recent first) and return the first one
+        const sortedPromotions = employeePromotions.sort((a, b) => 
+            new Date(b.promotionDate).getTime() - new Date(a.promotionDate).getTime()
+        );
+
+        console.log('[EmployeeDetails] Returning promotion:', sortedPromotions[0]);
+        return sortedPromotions[0];
+    };
+
+    const employeePromotion = getEmployeePromotion();
+
+    // Get employee's most recent resignation (if any)
+    const getEmployeeResignation = (): Resignation | null => {
+        if (!employee || !resignations.length) {
+            console.log('[EmployeeDetails] No resignation data:', { 
+                hasEmployee: !!employee, 
+                resignationsCount: resignations.length 
+            });
+            return null;
+        }
+
+        if (!employee._id && !employee.employeeId) {
+            console.log('[EmployeeDetails] Employee missing ID fields:', {
+                _id: employee._id,
+                employeeId: employee.employeeId
+            });
+            return null;
+        }
+
+        console.log('[EmployeeDetails] Checking resignations:', {
+            employeeId: employee._id,
+            employeeEmployeeId: employee.employeeId,
+            totalResignations: resignations.length,
+            resignationEmployeeIds: resignations.map(r => ({
+                resignationId: r.resignationId,
+                employeeId: r.employeeId,
+                employeeName: r.employeeName
+            }))
+        });
+
+        // Filter resignations for this specific employee
+        const employeeResignations = resignations.filter(resignation => {
+            const matches = resignation.employeeId === employee._id || 
+                           resignation.employeeId === employee.employeeId ||
+                           resignation.employeeId === employeeId; // Also check the route param
+            
+            if (matches) {
+                console.log('[EmployeeDetails] Found matching resignation:', resignation);
+            }
+            
+            return matches;
+        });
+
+        console.log('[EmployeeDetails] Filtered resignations for employee:', employeeResignations.length);
+
+        if (employeeResignations.length === 0) return null;
+
+        // Sort by resignation date (most recent first) and return the first one
+        const sortedResignations = employeeResignations.sort((a, b) => 
+            new Date(b.resignationDate).getTime() - new Date(a.resignationDate).getTime()
+        );
+
+        console.log('[EmployeeDetails] Returning resignation:', sortedResignations[0]);
+        return sortedResignations[0];
+    };
+
+    const employeeResignation = getEmployeeResignation();
 
     if (!employeeId) {
         return (
@@ -1410,19 +1674,8 @@ const EmployeeDetails = () => {
         label: string;
     }
 
-    const departmentChoose: Option[] = [
-        { value: "Select", label: "Select" },
-        { value: "All Department", label: "All Department" },
-        { value: "Finance", label: "Finance" },
-        { value: "Developer", label: "Developer" },
-        { value: "Executive", label: "Executive" },
-    ];
-    const designationChoose: Option[] = [
-        { value: "Select", label: "Select" },
-        { value: "Finance", label: "Finance" },
-        { value: "Developer", label: "Developer" },
-        { value: "Executive", label: "Executive" },
-    ];
+    // Department and designation options are now fetched dynamically from database
+    // via socket events and stored in state variables: department, designation
     const martialstatus = [
         { value: "Select", label: "Select" },
         { value: "Yes", label: "Yes" },
@@ -1582,6 +1835,44 @@ const EmployeeDetails = () => {
                                                 </span>
                                                 <p className="text-dark">{employee?.designation || '—'}</p>
                                             </div>
+                                            {employeePromotion && (
+                                                <div className="d-flex align-items-center justify-content-between mt-2">
+                                                    <span className="d-inline-flex align-items-center">
+                                                        <i className="ti ti-trending-up me-2" />
+                                                        Promotion
+                                                    </span>
+                                                    <Link
+                                                        to="#"
+                                                        className="text-success fw-medium mb-0 text-decoration-none"
+                                                        data-bs-toggle="modal"
+                                                        data-inert={true}
+                                                        data-bs-target="#view_employee_promotion"
+                                                        title="Click to view promotion details"
+                                                    >
+                                                        {employeePromotion.promotionTo.designation.name}
+                                                        <i className="ti ti-external-link ms-1 fs-12" />
+                                                    </Link>
+                                                </div>
+                                            )}
+                                            {employeeResignation && (
+                                                <div className="d-flex align-items-center justify-content-between mt-2">
+                                                    <span className="d-inline-flex align-items-center">
+                                                        <i className="ti ti-door-exit me-2" />
+                                                        Resignation
+                                                    </span>
+                                                    <Link
+                                                        to="#"
+                                                        className="text-danger fw-medium mb-0 text-decoration-none"
+                                                        data-bs-toggle="modal"
+                                                        data-inert={true}
+                                                        data-bs-target="#view_employee_resignation"
+                                                        title="Click to view resignation details"
+                                                    >
+                                                        {dayjs(employeeResignation.resignationDate).format("DD MMM YYYY")}
+                                                        <i className="ti ti-external-link ms-1 fs-12" />
+                                                    </Link>
+                                                </div>
+                                            )}
                                             <div className="row gx-2 mt-3">
                                                 <div className="col-6">
                                                     <div>
@@ -2873,15 +3164,16 @@ const EmployeeDetails = () => {
                                                         <label className="form-label">Department</label>
                                                         <CommonSelect
                                                             className='select'
-                                                            options={departmentChoose}
-                                                            value={departmentChoose.find(opt => opt.value === editFormData.departmentId) || departmentChoose[0]}
+                                                            options={department}
+                                                            value={department.find(opt => opt.value === editFormData.departmentId) || department[0]}
                                                             onChange={option => {
                                                                 if (option) {
                                                                     setEditFormData(prev => ({
                                                                         ...prev,
-                                                                        departmentId: option.value
+                                                                        departmentId: option.value,
+                                                                        designationId: "" // Clear designation when department changes
                                                                     }));
-                                                                    if (socket) {
+                                                                    if (socket && option.value) {
                                                                         socket.emit("hrm/designations/get", { departmentId: option.value });
                                                                     }
                                                                 }
@@ -2894,8 +3186,8 @@ const EmployeeDetails = () => {
                                                         <label className="form-label">Designation</label>
                                                         <CommonSelect
                                                             className='select'
-                                                            options={designationChoose}
-                                                            value={designationChoose.find(opt => opt.value === editFormData.designationId) || designationChoose[0]}
+                                                            options={designation}
+                                                            value={designation.find(opt => opt.value === editFormData.designationId) || designation[0]}
                                                             onChange={option => {
                                                                 if (option) {
                                                                     setEditFormData(prev => ({
@@ -4235,6 +4527,14 @@ const EmployeeDetails = () => {
                 </div>
             </div>
             {/* /View Policy Modal */}
+
+            {/* Promotion Details Modal */}
+            <PromotionDetailsModal promotion={employeePromotion} modalId="view_employee_promotion" />
+            {/* /Promotion Details Modal */}
+
+            {/* Resignation Details Modal */}
+            <ResignationDetailsModal resignation={employeeResignation} modalId="view_employee_resignation" />
+            {/* /Resignation Details Modal */}
         </>
     )
 }

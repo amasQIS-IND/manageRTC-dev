@@ -16,6 +16,7 @@ import contactRoutes from "./routes/contacts.routes.js";
 import goalTypeRoutes from "./routes/performance/goalType.routes.js";
 import goalTrackingRoutes from "./routes/performance/goalTracking.routes.js";
 import ticketRoutes from "./routes/tickets.routes.js";
+import { startPromotionScheduler } from "./jobs/promotionScheduler.js";
 
 
 
@@ -211,6 +212,10 @@ const initializeServer = async () => {
 
     // Socket setup
     socketHandler(httpServer);
+
+    // Start promotion scheduler for automatic promotion application
+    startPromotionScheduler();
+    console.log('✅ Promotion scheduler initialized');
 
     // Server listen
     const PORT = process.env.PORT || 5000;
