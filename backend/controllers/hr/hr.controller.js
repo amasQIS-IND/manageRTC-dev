@@ -8,6 +8,7 @@ import * as hrmEmployee from "../../services/hr/hrm.employee.js";
 import terminationController from "./termination.controller.js";
 import resignationController from "./resignation.controller.js";
 import holidayController from "./holidays.controller.js";
+import holidayTypeController from "./holidayTypes.controller.js";
 
 const hrDashboardController = (socket, io) => {
   console.log("Setting up termination controller...");
@@ -16,6 +17,13 @@ const hrDashboardController = (socket, io) => {
   resignationController(socket,io);
   console.log("Attaching holidays controller...**********");
   holidayController(socket,io);
+  console.log("Attaching holiday types controller...**********");
+  try {
+    holidayTypeController(socket,io);
+    console.log("Holiday types controller attached successfully!");
+  } catch (error) {
+    console.error("ERROR attaching holiday types controller:", error);
+  }
   const isDevelopment =
     process.env.NODE_ENV === "development" ||
     process.env.NODE_ENV === "production";
@@ -1271,6 +1279,36 @@ const hrDashboardController = (socket, io) => {
         socket.emit("hrm/employees/delete-response", {
           done: false,
           error: error.message || "Unexpected error deleting policy",
+        });
+      }
+    })
+  );
+
+  // Check Employee Lifecycle Status (for UI status dropdown control)
+  socket.on(
+    "hrm/employees/check-lifecycle-status",
+    withRateLimit(async (data) => {
+      try {
+        const { companyId } = validateHrAccess(socket);
+
+        if (!data?.employeeId) {
+          throw new Error("Employee ID is required");
+        }
+
+        const response = await hrmEmployee.checkEmployeeLifecycleStatus(
+          companyId,
+          data.employeeId
+        );
+
+        socket.emit("hrm/employees/check-lifecycle-status-response", {
+          done: true,
+          data: response
+        });
+      } catch (error) {
+        console.log(error);
+        socket.emit("hrm/employees/check-lifecycle-status-response", {
+          done: false,
+          error: error.message || "Unexpected error checking lifecycle status",
         });
       }
     })

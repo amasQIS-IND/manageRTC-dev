@@ -12,9 +12,15 @@ import { useSocket } from "../../../SocketContext";
 import { Socket } from "socket.io-client";
 import { toast, ToastContainer } from "react-toastify";
 import Footer from "../../../core/common/footer";
+import PromotionDetailsModal from '../../../core/modals/PromotionDetailsModal';
+import ResignationDetailsModal from '../../../core/modals/ResignationDetailsModal';
+import TerminationDetailsModal from '../../../core/modals/TerminationDetailsModal';
 
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
+
+// Declare Bootstrap type for modal
+declare const bootstrap: any;
 
 type PasswordField = "password" | "confirmPassword";
 
@@ -232,6 +238,70 @@ interface Policy {
     effectiveDate: string;
     applyToAll?: boolean;  // When true, policy applies to all employees
     assignTo?: DepartmentDesignationMapping[];
+}
+
+interface Promotion {
+    _id: string;
+    employee: {
+        id: string;
+        name: string;
+        image: string;
+    };
+    promotionFrom: {
+        department: {
+            id: string;
+            name: string;
+        };
+        designation: {
+            id: string;
+            name: string;
+        };
+    };
+    promotionTo: {
+        department: {
+            id: string;
+            name: string;
+        };
+        designation: {
+            id: string;
+            name: string;
+        };
+    };
+    promotionDate: string;
+    promotionType?: string;
+    reason?: string;
+    notes?: string;
+}
+
+interface Resignation {
+    resignationId: string;
+    employeeName: string;
+    employeeId: string;
+    employeeImage?: string;
+    department: string;
+    departmentId: string;
+    designation?: string;
+    resignationDate: string;
+    noticeDate: string;
+    reason?: string;
+    notes?: string;
+}
+
+interface Termination {
+    terminationId: string;
+    employeeName: string | null;
+    employeeId: string | null;
+    employee_id?: string | null;
+    employeeImage?: string | null;
+    department: string | null;
+    departmentId: string | null;
+    designation?: string | null;
+    terminationDate: string;
+    noticeDate: string;
+    reason: string;
+    terminationType: string;
+    status?: string;
+    lastWorkingDate?: string;
 }
 
 const EmployeeDetails = () => {
@@ -886,6 +956,14 @@ const EmployeeDetails = () => {
     const [policies, setPolicies] = useState<Policy[]>([]);
     const [policiesLoading, setPoliciesLoading] = useState(false);
     const [viewingPolicy, setViewingPolicy] = useState<Policy | null>(null);
+    const [department, setDepartment] = useState<Option[]>([]);
+    const [designation, setDesignation] = useState<Option[]>([]);
+    const [promotions, setPromotions] = useState<Promotion[]>([]);
+    const [promotionsLoading, setPromotionsLoading] = useState(false);
+    const [resignations, setResignations] = useState<Resignation[]>([]);
+    const [resignationsLoading, setResignationsLoading] = useState(false);
+    const [terminations, setTerminations] = useState<Termination[]>([]);
+    const [terminationsLoading, setTerminationsLoading] = useState(false);
 
     // Initialize edit form data when employee data is loaded
     useEffect(() => {
@@ -1014,7 +1092,11 @@ const EmployeeDetails = () => {
             return;
         }
         
-        const payload = {
+        // Lifecycle statuses that should only be set through HR workflows
+        const lifecycleStatuses = ["Terminated", "Resigned", "On Notice"];
+        const currentStatus = editFormData.status || "Active";
+        
+        const payload: any = {
             employeeId: editFormData.employeeId || "",
             firstName: editFormData.firstName || "",
             lastName: editFormData.lastName || "",
@@ -1042,8 +1124,13 @@ const EmployeeDetails = () => {
             dateOfJoining: editFormData.dateOfJoining || null,
             about: editFormData.about || "",
             avatarUrl: editFormData.avatarUrl || "",
-            status: editFormData.status || "Active",
         };
+        
+        // Only include status if it's NOT a lifecycle status
+        // Lifecycle statuses should only be set through termination/resignation workflows
+        if (!lifecycleStatuses.includes(currentStatus)) {
+            payload.status = currentStatus;
+        }
 
         try {
             socket.emit("hrm/employees/update", payload);
@@ -1056,6 +1143,26 @@ const EmployeeDetails = () => {
                 position: "top-right",
                 autoClose: 3000,
             });
+        }
+    };
+
+    const handleDepartmentResponse = (response: any) => {
+        if (response.done && Array.isArray(response.data)) {
+            const mappedDepartments = response.data.map((d: any) => ({
+                value: d._id,
+                label: d.department,
+            }));
+            setDepartment([{ value: "", label: "Select" }, ...mappedDepartments]);
+        }
+    };
+
+    const handleDesignationResponse = (response: any) => {
+        if (response.done && Array.isArray(response.data)) {
+            const mappedDesignations = response.data.map((d: any) => ({
+                value: d._id,
+                label: d.designation,
+            }));
+            setDesignation([{ value: "", label: "Select" }, ...mappedDesignations]);
         }
     };
 
@@ -1081,6 +1188,24 @@ const EmployeeDetails = () => {
         // Fetch policies
         setPoliciesLoading(true);
         socket.emit("hr/policy/get");
+        
+        // Fetch departments for Edit Employee modal
+        socket.emit("hr/departments/get");
+
+        // Fetch promotions for this employee
+        setPromotionsLoading(true);
+        console.log('[EmployeeDetails] Emitting promotion:getAll');
+        socket.emit("promotion:getAll", {});
+
+        // Fetch resignations for this employee
+        setResignationsLoading(true);
+        console.log('[EmployeeDetails] Emitting hr/resignation/resignationlist');
+        socket.emit("hr/resignation/resignationlist", { type: "alltime" });
+
+        // Fetch terminations for this employee
+        setTerminationsLoading(true);
+        console.log('[EmployeeDetails] Emitting hr/termination/terminationlist');
+        socket.emit("hr/termination/terminationlist", { type: "alltime" });
 
         const handleDetailsResponse = (response: any) => {
             if (!isMounted) return;
@@ -1254,6 +1379,74 @@ const EmployeeDetails = () => {
             }
         };
 
+        const handleGetPromotionsResponse = (response: any) => {
+            console.log('[EmployeeDetails] Received promotions response:', response);
+            setPromotionsLoading(false);
+            if (!isMounted) return;
+
+            if (response.done) {
+                console.log('[EmployeeDetails] Setting promotions, count:', response.data?.length || 0);
+                console.log('[EmployeeDetails] Promotion data:', response.data);
+                setPromotions(response.data || []);
+            } else {
+                console.error("[EmployeeDetails] Failed to fetch promotions:", response.error);
+                setPromotions([]);
+            }
+        };
+
+        // Handle promotion create/update to refresh the list automatically
+        const handlePromotionCreateResponse = (response: any) => {
+            if (!isMounted) return;
+            
+            if (response.done) {
+                // Refresh promotions list to show the new promotion
+                socket.emit("promotion:getAll", {});
+                // Also refresh employee details as they might have changed
+                socket.emit("hrm/employees/get-details", { employeeId: employeeId });
+            }
+        };
+
+        const handlePromotionUpdateResponse = (response: any) => {
+            if (!isMounted) return;
+            
+            if (response.done) {
+                // Refresh promotions list to show updated promotion
+                socket.emit("promotion:getAll", {});
+                // Also refresh employee details as they might have changed
+                socket.emit("hrm/employees/get-details", { employeeId: employeeId });
+            }
+        };
+
+        const handleGetResignationsResponse = (response: any) => {
+            console.log('[EmployeeDetails] Received resignations response:', response);
+            setResignationsLoading(false);
+            if (!isMounted) return;
+
+            if (response.done) {
+                console.log('[EmployeeDetails] Setting resignations, count:', response.data?.length || 0);
+                console.log('[EmployeeDetails] Resignation data:', response.data);
+                setResignations(response.data || []);
+            } else {
+                console.error("[EmployeeDetails] Failed to fetch resignations:", response.error);
+                setResignations([]);
+            }
+        };
+
+        const handleGetTerminationsResponse = (response: any) => {
+            console.log('[EmployeeDetails] Received terminations response:', response);
+            setTerminationsLoading(false);
+            if (!isMounted) return;
+
+            if (response.done) {
+                console.log('[EmployeeDetails] Setting terminations, count:', response.data?.length || 0);
+                console.log('[EmployeeDetails] Termination data:', response.data);
+                setTerminations(response.data || []);
+            } else {
+                console.error("[EmployeeDetails] Failed to fetch terminations:", response.error);
+                setTerminations([]);
+            }
+        };
+
         socket.on("hrm/employees/get-details-response", handleDetailsResponse);
         socket.on("hrm/employees/update-response", handleUpdateEmployeeResponse);
         socket.on("hrm/employees/update-bank-response", handleBankUpdateResponse);
@@ -1264,6 +1457,13 @@ const EmployeeDetails = () => {
         socket.on("hrm/employees/update-experience-response", handleExperienceResponse);
         socket.on("hrm/employees/update-about-response", handleAboutResponse);
         socket.on("hr/policy/get-response", handleGetPolicyResponse);
+        socket.on("hr/departments/get-response", handleDepartmentResponse);
+        socket.on("hrm/designations/get-response", handleDesignationResponse);
+        socket.on("promotion:getAll:response", handleGetPromotionsResponse);
+        socket.on("promotion:create:response", handlePromotionCreateResponse);
+        socket.on("promotion:update:response", handlePromotionUpdateResponse);
+        socket.on("hr/resignation/resignationlist-response", handleGetResignationsResponse);
+        socket.on("hr/termination/terminationlist-response", handleGetTerminationsResponse);
 
         return () => {
             socket.off("hrm/employees/get-details-response", handleDetailsResponse);
@@ -1276,6 +1476,13 @@ const EmployeeDetails = () => {
             socket.off("hrm/employees/update-experience-response", handleExperienceResponse);
             socket.off("hrm/employees/update-about-response", handleAboutResponse);
             socket.off("hr/policy/get-response", handleGetPolicyResponse);
+            socket.off("hr/departments/get-response", handleDepartmentResponse);
+            socket.off("hrm/designations/get-response", handleDesignationResponse);
+            socket.off("promotion:getAll:response", handleGetPromotionsResponse);
+            socket.off("promotion:create:response", handlePromotionCreateResponse);
+            socket.off("promotion:update:response", handlePromotionUpdateResponse);
+            socket.off("hr/resignation/resignationlist-response", handleGetResignationsResponse);
+            socket.off("hr/termination/terminationlist-response", handleGetTerminationsResponse);
             isMounted = false;
             clearTimeout(timeoutId);
         };
@@ -1305,6 +1512,172 @@ const EmployeeDetails = () => {
     };
 
     const applicablePolicies = getApplicablePolicies();
+
+    // Get employee's most recent promotion (if any)
+    const getEmployeePromotion = (): Promotion | null => {
+        if (!employee || !promotions.length) {
+            console.log('[EmployeeDetails] No promotion data:', { 
+                hasEmployee: !!employee, 
+                promotionsCount: promotions.length 
+            });
+            return null;
+        }
+
+        console.log('[EmployeeDetails] Checking promotions:', {
+            employeeId: employee._id,
+            employeeEmployeeId: employee.employeeId,
+            totalPromotions: promotions.length,
+            promotionEmployeeIds: promotions.map(p => ({
+                promotionId: p._id,
+                employeeId: p.employee?.id,
+                employeeName: p.employee?.name
+            }))
+        });
+
+        // Filter promotions for this specific employee
+        // Check multiple possible ID fields to ensure we find the promotion
+        const employeePromotions = promotions.filter(promo => {
+            const promoEmployeeId = promo.employee?.id;
+            const matches = promoEmployeeId === employee._id || 
+                           promoEmployeeId === employee.employeeId ||
+                           promoEmployeeId === employeeId; // Also check the route param
+            
+            if (matches) {
+                console.log('[EmployeeDetails] Found matching promotion:', promo);
+            }
+            
+            return matches;
+        });
+
+        console.log('[EmployeeDetails] Filtered promotions for employee:', employeePromotions.length);
+
+        if (employeePromotions.length === 0) return null;
+
+        // Sort by promotion date (most recent first) and return the first one
+        const sortedPromotions = employeePromotions.sort((a, b) => 
+            new Date(b.promotionDate).getTime() - new Date(a.promotionDate).getTime()
+        );
+
+        console.log('[EmployeeDetails] Returning promotion:', sortedPromotions[0]);
+        return sortedPromotions[0];
+    };
+
+    const employeePromotion = getEmployeePromotion();
+
+    // Get employee's most recent resignation (if any)
+    const getEmployeeResignation = (): Resignation | null => {
+        if (!employee || !resignations.length) {
+            console.log('[EmployeeDetails] No resignation data:', { 
+                hasEmployee: !!employee, 
+                resignationsCount: resignations.length 
+            });
+            return null;
+        }
+
+        if (!employee._id && !employee.employeeId) {
+            console.log('[EmployeeDetails] Employee missing ID fields:', {
+                _id: employee._id,
+                employeeId: employee.employeeId
+            });
+            return null;
+        }
+
+        console.log('[EmployeeDetails] Checking resignations:', {
+            employeeId: employee._id,
+            employeeEmployeeId: employee.employeeId,
+            totalResignations: resignations.length,
+            resignationEmployeeIds: resignations.map(r => ({
+                resignationId: r.resignationId,
+                employeeId: r.employeeId,
+                employeeName: r.employeeName
+            }))
+        });
+
+        // Filter resignations for this specific employee
+        const employeeResignations = resignations.filter(resignation => {
+            const matches = resignation.employeeId === employee._id || 
+                           resignation.employeeId === employee.employeeId ||
+                           resignation.employeeId === employeeId; // Also check the route param
+            
+            if (matches) {
+                console.log('[EmployeeDetails] Found matching resignation:', resignation);
+            }
+            
+            return matches;
+        });
+
+        console.log('[EmployeeDetails] Filtered resignations for employee:', employeeResignations.length);
+
+        if (employeeResignations.length === 0) return null;
+
+        // Sort by resignation date (most recent first) and return the first one
+        const sortedResignations = employeeResignations.sort((a, b) => 
+            new Date(b.resignationDate).getTime() - new Date(a.resignationDate).getTime()
+        );
+
+        console.log('[EmployeeDetails] Returning resignation:', sortedResignations[0]);
+        return sortedResignations[0];
+    };
+
+    const employeeResignation = getEmployeeResignation();
+
+    // Get employee's most recent termination (if any)
+    const getEmployeeTermination = (): Termination | null => {
+        if (!employee || !terminations.length) {
+            console.log('[EmployeeDetails] No termination data:', { 
+                hasEmployee: !!employee, 
+                terminationsCount: terminations.length 
+            });
+            return null;
+        }
+
+        if (!employee._id && !employee.employeeId) {
+            console.log('[EmployeeDetails] Employee missing ID fields:', {
+                _id: employee._id,
+                employeeId: employee.employeeId
+            });
+            return null;
+        }
+
+        console.log('[EmployeeDetails] Checking terminations:', {
+            employeeId: employee._id,
+            employeeEmployeeId: employee.employeeId,
+            totalTerminations: terminations.length,
+            terminationEmployeeIds: terminations.map(t => ({
+                terminationId: t.terminationId,
+                employeeId: t.employeeId,
+                employeeName: t.employeeName
+            }))
+        });
+
+        // Filter terminations for this specific employee
+        const employeeTerminations = terminations.filter(termination => {
+            // Handle both employee_id (ObjectId string) and employeeId (EMP-XXXX)
+            const matches = termination.employee_id === employee._id || 
+                           termination.employee_id === employee.employeeId ||
+                           termination.employee_id === employeeId; // Also check the route param
+            
+            if (matches) {
+                console.log('[EmployeeDetails] Found matching termination:', termination);
+            }
+            
+            return matches;
+        });
+
+        console.log('[EmployeeDetails] Filtered terminations for employee:', employeeTerminations.length);
+
+        if (employeeTerminations.length === 0) return null;
+
+        // Sort by termination date (most recent first) and return the first one
+        const sortedTerminations = employeeTerminations.sort((a, b) => 
+            new Date(b.terminationDate).getTime() - new Date(a.terminationDate).getTime()
+        );
+
+        console.log('[EmployeeDetails] Returning termination:', sortedTerminations[0]);
+        return sortedTerminations[0];
+    };
+
+    const employeeTermination = getEmployeeTermination();
 
     if (!employeeId) {
         return (
@@ -1410,19 +1783,8 @@ const EmployeeDetails = () => {
         label: string;
     }
 
-    const departmentChoose: Option[] = [
-        { value: "Select", label: "Select" },
-        { value: "All Department", label: "All Department" },
-        { value: "Finance", label: "Finance" },
-        { value: "Developer", label: "Developer" },
-        { value: "Executive", label: "Executive" },
-    ];
-    const designationChoose: Option[] = [
-        { value: "Select", label: "Select" },
-        { value: "Finance", label: "Finance" },
-        { value: "Developer", label: "Developer" },
-        { value: "Executive", label: "Executive" },
-    ];
+    // Department and designation options are now fetched dynamically from database
+    // via socket events and stored in state variables: department, designation
     const martialstatus = [
         { value: "Select", label: "Select" },
         { value: "Yes", label: "Yes" },
@@ -1582,6 +1944,63 @@ const EmployeeDetails = () => {
                                                 </span>
                                                 <p className="text-dark">{employee?.designation || '—'}</p>
                                             </div>
+                                            {employeePromotion && (
+                                                <div className="d-flex align-items-center justify-content-between mt-2">
+                                                    <span className="d-inline-flex align-items-center">
+                                                        <i className="ti ti-trending-up me-2" />
+                                                        Promotion
+                                                    </span>
+                                                    <Link
+                                                        to="#"
+                                                        className="text-success fw-medium mb-0 text-decoration-none"
+                                                        data-bs-toggle="modal"
+                                                        data-inert={true}
+                                                        data-bs-target="#view_employee_promotion"
+                                                        title="Click to view promotion details"
+                                                    >
+                                                        {employeePromotion.promotionTo.designation.name}
+                                                        <i className="ti ti-external-link ms-1 fs-12" />
+                                                    </Link>
+                                                </div>
+                                            )}
+                                            {employeeResignation && (
+                                                <div className="d-flex align-items-center justify-content-between mt-2">
+                                                    <span className="d-inline-flex align-items-center">
+                                                        <i className="ti ti-door-exit me-2" />
+                                                        Resignation
+                                                    </span>
+                                                    <Link
+                                                        to="#"
+                                                        className="text-danger fw-medium mb-0 text-decoration-none"
+                                                        data-bs-toggle="modal"
+                                                        data-inert={true}
+                                                        data-bs-target="#view_employee_resignation"
+                                                        title="Click to view resignation details"
+                                                    >
+                                                        {dayjs(employeeResignation.resignationDate).format("DD MMM YYYY")}
+                                                        <i className="ti ti-external-link ms-1 fs-12" />
+                                                    </Link>
+                                                </div>
+                                            )}
+                                            {employeeTermination && (
+                                                <div className="d-flex align-items-center justify-content-between mt-2">
+                                                    <span className="d-inline-flex align-items-center">
+                                                        <i className="ti ti-user-x me-2" />
+                                                        Termination
+                                                    </span>
+                                                    <Link
+                                                        to="#"
+                                                        className="text-danger fw-medium mb-0 text-decoration-none"
+                                                        data-bs-toggle="modal"
+                                                        data-inert={true}
+                                                        data-bs-target="#view_employee_termination"
+                                                        title="Click to view termination details"
+                                                    >
+                                                        {dayjs(employeeTermination.terminationDate).format("DD MMM YYYY")}
+                                                        <i className="ti ti-external-link ms-1 fs-12" />
+                                                    </Link>
+                                                </div>
+                                            )}
                                             <div className="row gx-2 mt-3">
                                                 <div className="col-6">
                                                     <div>
@@ -2873,15 +3292,16 @@ const EmployeeDetails = () => {
                                                         <label className="form-label">Department</label>
                                                         <CommonSelect
                                                             className='select'
-                                                            options={departmentChoose}
-                                                            value={departmentChoose.find(opt => opt.value === editFormData.departmentId) || departmentChoose[0]}
+                                                            options={department}
+                                                            value={department.find(opt => opt.value === editFormData.departmentId) || department[0]}
                                                             onChange={option => {
                                                                 if (option) {
                                                                     setEditFormData(prev => ({
                                                                         ...prev,
-                                                                        departmentId: option.value
+                                                                        departmentId: option.value,
+                                                                        designationId: "" // Clear designation when department changes
                                                                     }));
-                                                                    if (socket) {
+                                                                    if (socket && option.value) {
                                                                         socket.emit("hrm/designations/get", { departmentId: option.value });
                                                                     }
                                                                 }
@@ -2894,8 +3314,8 @@ const EmployeeDetails = () => {
                                                         <label className="form-label">Designation</label>
                                                         <CommonSelect
                                                             className='select'
-                                                            options={designationChoose}
-                                                            value={designationChoose.find(opt => opt.value === editFormData.designationId) || designationChoose[0]}
+                                                            options={designation}
+                                                            value={designation.find(opt => opt.value === editFormData.designationId) || designation[0]}
                                                             onChange={option => {
                                                                 if (option) {
                                                                     setEditFormData(prev => ({
@@ -2912,7 +3332,7 @@ const EmployeeDetails = () => {
                                                         <label className="form-label">
                                                             Status <span className="text-danger">*</span>
                                                         </label>
-                                                        <div className="d-flex align-items-center">
+                                                        <div>
                                                             <div className="form-check form-switch">
                                                                 <input
                                                                     className="form-check-input"
@@ -2920,14 +3340,32 @@ const EmployeeDetails = () => {
                                                                     role="switch"
                                                                     id="editStatusSwitch"
                                                                     checked={editFormData.status === "Active"}
-                                                                    onChange={(e) =>
+                                                                    disabled={
+                                                                        editFormData.status?.toLowerCase() !== "active" &&
+                                                                        editFormData.status?.toLowerCase() !== "inactive"
+                                                                    }
+                                                                    onChange={(e) => {
+                                                                        const currentStatus = editFormData.status?.toLowerCase();
+                                                                        // Only allow editing if status is Active or Inactive
+                                                                        if (currentStatus !== "active" && currentStatus !== "inactive") {
+                                                                            return;
+                                                                        }
                                                                         setEditFormData(prev => ({
                                                                             ...prev,
                                                                             status: e.target.checked ? "Active" : "Inactive"
-                                                                        }))
-                                                                    }
+                                                                        }));
+                                                                    }}
                                                                 />
-                                                                <label className="form-check-label" htmlFor="editStatusSwitch">
+                                                                <label 
+                                                                    className="form-check-label" 
+                                                                    htmlFor="editStatusSwitch"
+                                                                    style={{
+                                                                        opacity: (
+                                                                            editFormData.status?.toLowerCase() !== "active" &&
+                                                                            editFormData.status?.toLowerCase() !== "inactive"
+                                                                        ) ? 0.6 : 1
+                                                                    }}
+                                                                >
                                                                     <span
                                                                         className={`badge ${editFormData.status === "Active"
                                                                             ? "badge-success"
@@ -3077,10 +3515,16 @@ const EmployeeDetails = () => {
                                                 <button 
                                                     type="button" 
                                                     className="btn btn-primary"
-                                                    data-bs-toggle="modal"
-                                                    data-inert={true}
-                                                    data-bs-target="#success_modal"
-                                                    onClick={handlePermissionUpdateSubmit}
+                                                    onClick={(e) => {
+                                                        handlePermissionUpdateSubmit(e);
+                                                        // Close modal after submission
+                                                        setTimeout(() => {
+                                                            const closeButton = document.querySelector('#edit_employee [data-bs-dismiss="modal"]') as HTMLButtonElement;
+                                                            if (closeButton) {
+                                                                closeButton.click();
+                                                            }
+                                                        }, 100);
+                                                    }}
                                                     disabled={loading}
                                                 >
                                                     {loading ? "Saving..." : "Save"}
@@ -3800,43 +4244,6 @@ const EmployeeDetails = () => {
                 </div>
             </div>
             {/* /Add Experience */}
-            {/* Add Employee Success */}
-            <div className="modal fade" id="success_modal" role="dialog">
-                <div className="modal-dialog modal-dialog-centered modal-sm">
-                    <div className="modal-content">
-                        <div className="modal-body">
-                            <div className="text-center p-3">
-                                <span className="avatar avatar-lg avatar-rounded bg-success mb-3">
-                                    <i className="ti ti-check fs-24" />
-                                </span>
-                                <h5 className="mb-2">Employee Added Successfully</h5>
-                                <p className="mb-3">
-                                    Stephan Peralt has been added with Employee ID :
-                                    <span className="text-primary">{employee?.employeeId || '-'}</span>
-                                </p>
-                                <div>
-                                    <div className="row g-2">
-                                        <div className="col-6">
-                                            <Link to={all_routes.employeeList} className="btn btn-dark w-100">
-                                                Back to List
-                                            </Link>
-                                        </div>
-                                        <div className="col-6">
-                                            <Link
-                                                to={all_routes.employeedetails}
-                                                className="btn btn-primary w-100"
-                                            >
-                                                Detail Page
-                                            </Link>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            {/* /Add Client Success */}
             {/* Add Statuorty */}
             <div className="modal fade" id="add_bank_satutory">
                 <div className="modal-dialog modal-dialog-centered modal-lg">
@@ -4235,6 +4642,18 @@ const EmployeeDetails = () => {
                 </div>
             </div>
             {/* /View Policy Modal */}
+
+            {/* Promotion Details Modal */}
+            <PromotionDetailsModal promotion={employeePromotion} modalId="view_employee_promotion" />
+            {/* /Promotion Details Modal */}
+
+            {/* Resignation Details Modal */}
+            <ResignationDetailsModal resignation={employeeResignation} modalId="view_employee_resignation" />
+            {/* /Resignation Details Modal */}
+
+            {/* Termination Details Modal */}
+            <TerminationDetailsModal termination={employeeTermination} modalId="view_employee_termination" />
+            {/* /Termination Details Modal */}
         </>
     )
 }

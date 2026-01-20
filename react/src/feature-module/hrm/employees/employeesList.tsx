@@ -4,6 +4,7 @@ import { all_routes } from "../../router/all_routes";
 import { Link, useNavigate } from "react-router-dom";
 import Table from "../../../core/common/dataTable/index";
 import ImageWithBasePath from "../../../core/common/imageWithBasePath";
+import EmployeeNameCell from "../../../core/common/EmployeeNameCell";
 import PredefinedDateRanges from "../../../core/common/datePicker";
 import { employee_list_details } from "../../../core/data/json/employees_list_details";
 import { DatePicker } from "antd";
@@ -62,7 +63,7 @@ interface Employee {
   companyName: string;
   departmentId: string;
   designationId: string;
-  status: "Active" | "Inactive";
+  status: "Active" | "Inactive" | "On Notice" | "Resigned" | "Terminated" | "On Leave";
   dateOfJoining: string | null;
   about: string;
   role: string;
@@ -87,11 +88,21 @@ const generateId = (prefix: string): string => {
   return `${prefix}-${paddedNum}`;
 };
 
-// Normalize status to ensure correct case (Active or Inactive)
-const normalizeStatus = (status: string | undefined): "Active" | "Inactive" => {
+// Normalize status to ensure correct case for all possible statuses
+const normalizeStatus = (status: string | undefined): "Active" | "Inactive" | "On Notice" | "Resigned" | "Terminated" | "On Leave" => {
   if (!status) return "Active";
   const normalized = status.toLowerCase();
-  return normalized === "inactive" ? "Inactive" : "Active";
+  
+  // Map all possible status values with case-insensitive matching
+  if (normalized === "active") return "Active";
+  if (normalized === "inactive") return "Inactive";
+  if (normalized === "on notice") return "On Notice";
+  if (normalized === "resigned") return "Resigned";
+  if (normalized === "terminated") return "Terminated";
+  if (normalized === "on leave") return "On Leave";
+  
+  // Default to Active for unknown statuses
+  return "Active";
 };
 
 // Type definitions
@@ -276,6 +287,15 @@ const EmployeeList = () => {
     newJoinersCount: 0,
   });
 
+  // Lifecycle status tracking for status dropdown control
+  const [lifecycleStatus, setLifecycleStatus] = useState<{
+    hasLifecycleRecord: boolean;
+    canChangeStatus: boolean;
+    type?: string;
+    status?: string;
+    message?: string;
+  } | null>(null);
+
   // View state - 'list' or 'grid'
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
 
@@ -308,7 +328,7 @@ const EmployeeList = () => {
     designationId: "",
     departmentId: "",
     about: "",
-    status: "Active" as "Active" | "Inactive",
+    status: "Active" as "Active" | "Inactive" | "On Notice" | "Resigned" | "Terminated" | "On Leave",
   });
   const [permissions, setPermissions] = useState(initialState);
 
@@ -465,10 +485,13 @@ const EmployeeList = () => {
         }
         if (Array.isArray(response.data.employees)) {
           // Normalize status for all employees to ensure correct case
-          const normalizedEmployees = response.data.employees.map((emp: Employee) => ({
-            ...emp,
-            status: normalizeStatus(emp.status)
-          }));
+          const normalizedEmployees = response.data.employees.map((emp: Employee) => {
+            console.log(`Employee ${emp.employeeId} - Raw status: "${emp.status}", Normalized: "${normalizeStatus(emp.status)}"`);
+            return {
+              ...emp,
+              status: normalizeStatus(emp.status)
+            };
+          });
           setEmployees(normalizedEmployees);
         }
         setError(null);
@@ -560,6 +583,25 @@ const EmployeeList = () => {
       }
     };
 
+    const handleLifecycleStatusResponse = (response: any) => {
+      if (!isMounted) return;
+      
+      if (response.done && response.data) {
+        setLifecycleStatus(response.data);
+        
+        // Show warning if employee has lifecycle records
+        if (response.data.hasLifecycleRecord && response.data.message) {
+          toast.info(response.data.message, {
+            position: "top-right",
+            autoClose: 5000,
+          });
+        }
+      } else {
+        // Clear lifecycle status if check fails
+        setLifecycleStatus(null);
+      }
+    };
+
     socket.on("hrm/employees/add-response", handleAddEmployeeResponse);
     socket.on("hrm/designations/get-response", handleDesignationResponse);
     socket.on("hr/departments/get-response", handleDepartmentResponse);
@@ -576,6 +618,10 @@ const EmployeeList = () => {
     socket.on(
       "hrm/employees/update-permissions-response",
       handleUpdatePermissionResponse
+    );
+    socket.on(
+      "hrm/employees/check-lifecycle-status-response",
+      handleLifecycleStatusResponse
     );
 
     return () => {
@@ -598,6 +644,10 @@ const EmployeeList = () => {
         "hrm/employees/update-permissions-response",
         handleUpdatePermissionResponse
       );
+      socket.off(
+        "hrm/employees/check-lifecycle-status-response",
+        handleLifecycleStatusResponse
+      );
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket]);
@@ -605,7 +655,7 @@ const EmployeeList = () => {
   useEffect(() => {
     if (editingEmployee && socket) {
       // Fetch designations for the employee's department
-      // console.log("Emitting for departmentID", editingEmployee.departmentId);
+      console.log("Emitting for departmentID", editingEmployee.departmentId);
 
       if (editingEmployee.departmentId) {
         socket.emit("hrm/designations/get", {
@@ -675,23 +725,13 @@ const EmployeeList = () => {
       dataIndex: "name",
       render: (text: string, record: any) => {
         return (
-          <div className="d-flex align-items-center">
-            <Link to={`/employees/${record._id}`} className="avatar avatar-md">
-              <img
-                src={record.avatarUrl || "assets/img/favicon.png"}
-                className="img-fluid rounded-circle"
-                alt="img"
-              />
-            </Link>
-            <div className="ms-2">
-              <p className="text-dark mb-0">
-                <Link to={`/employees/${record._id}`}>
-                  {record.firstName} {record.lastName}
-                </Link>
-              </p>
-              <span className="fs-12">{record.role}</span>
-            </div>
-          </div>
+          <EmployeeNameCell
+            name={`${record.firstName} ${record.lastName}`}
+            image={record.avatarUrl}
+            employeeId={record._id}
+            secondaryText={record.role}
+            avatarTheme="primary"
+          />
         );
       },
       sorter: (a: any, b: any) => (a.firstName || "").localeCompare(b.firstName || ""),
@@ -732,19 +772,46 @@ const EmployeeList = () => {
     {
       title: "Status",
       dataIndex: "status",
-      render: (text: string, record: any) => (
-        <span
-          className={`badge ${
-            text === "Active"
-              ? "badge-success"
-              : "badge-danger"
-          } d-inline-flex align-items-center badge-xs`}
-        >
-          <i className="ti ti-point-filled me-1" />
-          {text}
-        </span>
-      ),
+      render: (text: string, record: any) => {
+        // Normalize status for comparison (handle case-insensitive)
+        const status = (text || "").toLowerCase();
+        
+        // Determine badge color based on status
+        let badgeClass = "badge-secondary"; // Default gray
+        
+        if (status === "active") {
+          badgeClass = "badge-success"; // Green
+        } else if (status === "on notice") {
+          badgeClass = "badge-warning"; // Yellow/Orange
+        } else if (status === "resigned") {
+          badgeClass = "badge-info"; // Blue
+        } else if (status === "terminated") {
+          badgeClass = "badge-danger"; // Red
+        } else if (status === "inactive") {
+          badgeClass = "badge-secondary"; // Gray
+        } else if (status === "on leave") {
+          badgeClass = "badge-soft-warning"; // Soft yellow
+        }
+        
+        return (
+          <span
+            className={`badge ${badgeClass} d-inline-flex align-items-center badge-xs`}
+          >
+            <i className="ti ti-point-filled me-1" />
+            {text}
+          </span>
+        );
+      },
       sorter: (a: any, b: any) => (a.status || "").localeCompare(b.status || ""),
+      filters: [
+        { text: "Active", value: "Active" },
+        { text: "On Notice", value: "On Notice" },
+        { text: "Resigned", value: "Resigned" },
+        { text: "Terminated", value: "Terminated" },
+        { text: "Inactive", value: "Inactive" },
+        { text: "On Leave", value: "On Leave" },
+      ],
+      onFilter: (value: any, record: any) => record.status === value,
     },
     {
       title: "",
@@ -1599,7 +1666,6 @@ const EmployeeList = () => {
       toast.error("No employee selected for editing.");
       return false;
     }
-    return false;
     const payload = {
       employeeId: editingEmployee.employeeId || "",
       firstName: editingEmployee.firstName || "",
@@ -1628,8 +1694,14 @@ const EmployeeList = () => {
       dateOfJoining: editingEmployee.dateOfJoining || null,
       about: editingEmployee.about || "",
       avatarUrl: editingEmployee.avatarUrl || "",
-      status: normalizeStatus(editingEmployee.status),
     };
+    
+    // Only include status if it's NOT a lifecycle status
+    // Lifecycle statuses should only be set through termination/resignation workflows
+    if (!lifecycleStatuses.includes(currentStatus)) {
+      payload.status = currentStatus;
+    }
+    
     console.log("update payload", payload);
 
     if (socket) {
@@ -1699,7 +1771,7 @@ const EmployeeList = () => {
       departmentId: "",
       designationId: "",
       about: "",
-      status: "Active" as "Active" | "Inactive",
+      status: "Active" as "Active" | "Inactive" | "On Notice" | "Resigned" | "Terminated" | "On Leave",
     });
 
     setPermissions(initialState);
@@ -3959,7 +4031,7 @@ const EmployeeList = () => {
                           <label className="form-label">
                             Status <span className="text-danger"> *</span>
                           </label>
-                          <div className="d-flex align-items-center">
+                          <div>
                             <div className="form-check form-switch">
                               <input
                                 className="form-check-input"
@@ -3967,7 +4039,20 @@ const EmployeeList = () => {
                                 role="switch"
                                 id="editStatusSwitch"
                                 checked={editingEmployee?.status === "Active"}
-                                onChange={(e) =>
+                                disabled={
+                                  editingEmployee?.status?.toLowerCase() !== "active" &&
+                                  editingEmployee?.status?.toLowerCase() !== "inactive"
+                                }
+                                onChange={(e) => {
+                                  const currentStatus = editingEmployee?.status?.toLowerCase();
+                                  // Only allow editing if status is Active or Inactive
+                                  if (currentStatus !== "active" && currentStatus !== "inactive") {
+                                    toast.warning(
+                                      `Status cannot be changed for ${editingEmployee?.status || 'this'} employees. This status is managed by HR workflow.`,
+                                      { position: "top-right", autoClose: 4000 }
+                                    );
+                                    return;
+                                  }
                                   setEditingEmployee((prev) =>
                                     prev
                                       ? {
@@ -3975,10 +4060,19 @@ const EmployeeList = () => {
                                           status: e.target.checked ? "Active" : "Inactive",
                                         }
                                       : prev
-                                  )
-                                }
+                                  );
+                                }}
                               />
-                              <label className="form-check-label" htmlFor="editStatusSwitch">
+                              <label 
+                                className="form-check-label" 
+                                htmlFor="editStatusSwitch"
+                                style={{
+                                  opacity: (
+                                    editingEmployee?.status?.toLowerCase() !== "active" &&
+                                    editingEmployee?.status?.toLowerCase() !== "inactive"
+                                  ) ? 0.6 : 1
+                                }}
+                              >
                                 <span
                                   className={`badge ${
                                     editingEmployee?.status === "Active"
@@ -4158,10 +4252,14 @@ const EmployeeList = () => {
                     <button
                       type="button"
                       className="btn btn-primary"
-                      data-bs-toggle="modal"
-                      data-inert={true}
-                      data-bs-target="#success_modal"
-                      onClick={handlePermissionUpdateSubmit}
+                      onClick={(e) => {
+                        handlePermissionUpdateSubmit(e);
+                        // Close modal after submission
+                        if (editEmployeeModalRef.current) {
+                          editEmployeeModalRef.current.click();
+                          setTimeout(() => closeModal(), 100);
+                        }
+                      }}
                     >
                       Save{" "}
                     </button>

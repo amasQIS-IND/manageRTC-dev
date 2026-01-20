@@ -32,6 +32,7 @@ import profileController from "../controllers/pages/profilepage.controllers.js";
 import performanceIndicatorController from "../controllers/performance/performanceIndicator.controller.js";
 import performanceAppraisalController from "../controllers/performance/performanceAppraisal.controller.js";
 import performanceReviewController from "../controllers/performance/performanceReview.controller.js";
+import promotionController from "../controllers/performance/promotion.controller.js";
 
 const router = (socket, io, role) => {
   console.log(`Setting up socket router for role: ${role}`);
@@ -121,6 +122,7 @@ const router = (socket, io, role) => {
       console.log("Attaching performance controllers for admin...");
       goalTypeController(socket, io);
       goalTrackingController(socket, io);
+      promotionController(socket, io);
       break;
 
     case "hr":
@@ -161,6 +163,7 @@ const router = (socket, io, role) => {
       console.log("Attaching performance controllers for hr...");
       goalTypeController(socket, io);
       goalTrackingController(socket, io);
+      promotionController(socket, io);
       console.log("Attaching job controller for hr...");
       jobController(socket, io);
       console.log("Attaching asset controller for hr...");

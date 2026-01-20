@@ -89,6 +89,7 @@ export const getTenantCollections = (tenantDbName) => {
     assets: db.collection("assets"),
     assetCategories: db.collection("assetCategories"),
     holidays: db.collection("holidays"),
+    holidayTypes: db.collection("holidayTypes"),
 
     // invoice section
     addInvoices: db.collection("invoices"),
@@ -107,6 +108,7 @@ export const getTenantCollections = (tenantDbName) => {
     // Performance Management Collections
     goalTypes: db.collection("goalTypes"),
     goalTrackings: db.collection("goalTrackings"),
+    promotions: db.collection("promotions"),
     //profile collection
     profile: db.collection("profile"),
     tickets: db.collection("tickets"),
