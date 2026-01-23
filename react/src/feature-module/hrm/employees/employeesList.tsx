@@ -545,17 +545,13 @@ const EmployeeList = () => {
         }
         if (Array.isArray(response.data.employees)) {
           // Normalize status for all employees to ensure correct case
-          const normalizedEmployees = response.data.employees.map(
-            (emp: Employee) => {
-              console.log(
-                `Employee ${emp.employeeId} - Raw status: "${emp.status}", Normalized: "${normalizeStatus(emp.status)}"`,
-              );
-              return {
-                ...emp,
-                status: normalizeStatus(emp.status),
-              };
-            },
-          );
+          const normalizedEmployees = response.data.employees.map((emp: Employee) => {
+            console.log(`Employee ${emp.employeeId} - Raw status: "${emp.status}", Normalized: "${normalizeStatus(emp.status)}"`);
+            return {
+              ...emp,
+              status: normalizeStatus(emp.status)
+            };
+          });
           setEmployees(normalizedEmployees);
         }
         setError(null);
@@ -626,6 +622,12 @@ const EmployeeList = () => {
 
     const handleUpdatePermissionResponse = (response: any) => {
       if (response.done) {
+        // Close the modal on success
+        if (editEmployeeModalRef.current) {
+          editEmployeeModalRef.current.click();
+          setTimeout(() => closeModal(), 100);
+        }
+        
         toast.success("Employee permissions updated successfully!", {
           position: "top-right",
           autoClose: 3000,
@@ -635,6 +637,7 @@ const EmployeeList = () => {
         if (socket) {
           socket.emit("hrm/employees/get-employee-stats");
         }
+        setEditingEmployee(null); // Reset editing state
         setError(null);
         setLoading(false);
       } else {
@@ -903,8 +906,7 @@ const EmployeeList = () => {
       sorter: (a: any, b: any) =>
         (a.status || "").localeCompare(b.status || ""),
       filters: availableStatusFilters,
-      onFilter: (value: any, record: any) =>
-        normalizeStatus(record.status) === value,
+      onFilter: (value: any, record: any) => normalizeStatus(record.status) === value,
     },
     {
       title: "",
@@ -969,7 +971,7 @@ const EmployeeList = () => {
       ),
     },
   ];
-  console.log("Editing employee", editingEmployee);
+  // console.log("Editing employee", editingEmployee);
 
   // Helper functions
   const handleChange = (
@@ -1632,6 +1634,207 @@ const EmployeeList = () => {
     return true;
   };
 
+  // Validate edit form before submission - validates editingEmployee data
+  const validateEditForm = (): boolean => {
+    const errors: Record<string, string> = {};
+    console.log("Validating edit form for", editingEmployee);
+    // return false;
+    if (!editingEmployee) {
+      errors.general = "No employee data to validate";
+      setFieldErrors(errors);
+      return false;
+    }
+
+    // Required fields (must match backend requiredStringFields)
+    if (!editingEmployee.firstName || !editingEmployee.firstName.trim()) {
+      errors.firstName = "First name is required";
+    }
+
+    if (!editingEmployee.lastName || !editingEmployee.lastName.trim()) {
+      errors.lastName = "Last name is required";
+    }
+
+    if (!editingEmployee.departmentId || !editingEmployee.departmentId.trim()) {
+      errors.departmentId = "Department is required";
+    }
+
+    if (!editingEmployee.designationId || !editingEmployee.designationId.trim()) {
+      errors.designationId = "Designation is required";
+    }
+
+    // Account fields (required by backend)
+    if (!editingEmployee.account?.userName || !editingEmployee.account.userName.trim()) {
+      errors.userName = "Username is required";
+    }
+
+    // Contact fields (required by backend)
+    if (!editingEmployee.contact?.email || !editingEmployee.contact.email.trim()) {
+      errors.email = "Email is required";
+    } else {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(editingEmployee.contact.email)) {
+        errors.email = "Enter a valid email";
+      }
+    }
+
+    if (!editingEmployee.contact?.phone || !editingEmployee.contact.phone.trim()) {
+      errors.phone = "Phone number is required";
+    } else if (!/^\d{10,15}$/.test(editingEmployee.contact.phone.replace(/[\s\-\(\)]/g, ''))) {
+      errors.phone = "Enter a valid phone number";
+    }
+
+    // Date of joining (required by backend)
+    if (!editingEmployee.dateOfJoining) {
+      errors.dateOfJoining = "Joining date is required";
+    }
+
+    // Set errors in state
+    setFieldErrors(errors);
+
+    // If there are errors, scroll to first error field
+    if (Object.keys(errors).length > 0) {
+      setTimeout(() => {
+        const firstErrorField = Object.keys(errors)[0];
+        const errorElement = document.querySelector(`[name="${firstErrorField}"]`) || 
+                            document.querySelector(`#${firstErrorField}`) ||
+                            document.querySelector(`.field-${firstErrorField}`);
+        if (errorElement) {
+          errorElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          (errorElement as HTMLElement).focus?.();
+        }
+      }, 100);
+      
+      return false;
+    }
+
+    return true;
+  };
+
+  // Handle "Save and Next" - validate with backend before going to permissions tab
+  const handleNext = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    // Clear previous errors
+    setFieldErrors({});
+    setError(null);
+
+    // First run frontend validation (fast, synchronous)
+    if (!validateForm()) {
+      return;
+    }
+
+    // Check if socket is available
+    if (!socket) {
+      setFieldErrors({ general: "Connection unavailable. Please refresh the page." });
+      return;
+    }
+
+    // Show validating state
+    setIsValidating(true);
+
+    // Check for duplicate email, phone, and username with backend
+    try {
+      // Create a promise to wait for backend response
+      const checkDuplicates = new Promise<{ done: boolean; error?: string; field?: string }>((resolve, reject) => {
+        const timeoutId = setTimeout(() => {
+          reject(new Error("timeout"));
+        }, 15000); // 15 second timeout
+
+        // Listen for duplicate check response
+        const responseHandler = (response: any) => {
+          console.log("=== FRONTEND: Received response from backend ===", response);
+          clearTimeout(timeoutId);
+          resolve(response);
+        };
+        
+        socket.once("hrm/employees/check-duplicates-response", responseHandler);
+
+        // Emit duplicate check request
+        const requestData = {
+          email: formData.contact.email,
+          userName: formData.account.userName,
+          phone: formData.contact.phone,
+        };
+        
+        console.log("=== FRONTEND: Emitting check-duplicates ===", requestData);
+        
+        socket.emit("hrm/employees/check-duplicates", requestData);
+      });
+
+      const result = await checkDuplicates;
+      setIsValidating(false);
+
+      console.log("Check duplicates result:", result);
+
+      if (!result.done) {
+        // Duplicate found - backend returns field and error
+        const fieldName = result.field || "general";
+        const errorMessage = result.error || "Validation failed";
+        
+        console.log("Setting field error:", fieldName, errorMessage);
+        
+        // Use parseBackendError to get user-friendly message
+        const errorInfo = parseBackendError(errorMessage);
+        
+        if (errorInfo && errorInfo.field !== "general") {
+          // Set error for specific field
+          setFieldErrors(prev => ({
+            ...prev,
+            [errorInfo.field]: errorInfo.message
+          }));
+          
+          // Also show toast as backup
+          toast.error(errorInfo.message, {
+            position: "top-right",
+            autoClose: 5000,
+          });
+          
+          // Scroll to error field
+          setTimeout(() => {
+            const errorElement = document.querySelector(`[name="${errorInfo.field}"]`) || 
+                                document.querySelector(`#${errorInfo.field}`) ||
+                                document.querySelector('.is-invalid');
+            if (errorElement) {
+              errorElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              (errorElement as HTMLElement).focus?.();
+            }
+          }, 100);
+        } else {
+          // General error
+          setFieldErrors({ general: errorMessage });
+          toast.error(errorMessage, {
+            position: "top-right",
+            autoClose: 5000,
+          });
+        }
+        
+        return; // Don't proceed to next tab
+      }
+
+      // All validation passed - mark as validated and proceed to permissions tab
+      setIsBasicInfoValidated(true);
+      setActiveTab("address");
+    } catch (error: any) {
+      console.error("Validation error:", error);
+      setIsValidating(false);
+      if (error.message === "timeout") {
+        const errorMsg = "Validation is taking longer than expected. Please check your connection and try again.";
+        setFieldErrors({ general: errorMsg });
+        toast.error(errorMsg, {
+          position: "top-right",
+          autoClose: 5000,
+        });
+      } else {
+        const errorMsg = "Unable to validate. Please try again.";
+        setFieldErrors({ general: errorMsg });
+        toast.error(errorMsg, {
+          position: "top-right",
+          autoClose: 5000,
+        });
+      }
+    }
+  };
+
   // Handle form submission (final save - validation already done in handleNext)
   const handleSubmit = async (e: React.FormEvent) => {
     console.log("Submitting form and permissions");
@@ -1721,11 +1924,21 @@ const EmployeeList = () => {
   // 1. Update basic info
   const handleUpdateSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Clear previous errors
+    setFieldErrors({});
+    setError(null);
+
     if (!editingEmployee) {
       toast.error("No employee selected for editing.");
       return;
     }
 
+    // Validate form data
+    if (!validateEditForm()) {
+      return;
+    }
+    
     // Lifecycle statuses that should only be set through HR workflows
     const lifecycleStatuses = ["Terminated", "Resigned", "On Notice"];
     const currentStatus = normalizeStatus(editingEmployee.status);
@@ -1806,7 +2019,7 @@ const EmployeeList = () => {
       // toast.error("Socket connection is not available.");
     }
   };
-  console.log("editing employee", editingEmployee);
+  // console.log("editing employee", editingEmployee);
   const handleResetFormData = () => {
     setFormData({
       employeeId: generateId("EMP"),
@@ -2698,7 +2911,7 @@ const EmployeeList = () => {
               data-bs-dismiss="modal"
               style={{ display: "none" }}
             />
-            <form action={all_routes.employeeList} onSubmit={handleSubmit}>
+            <form action={all_routes.employeeList}>
               <div className="contact-grids-tab">
                 <ul className="nav nav-underline" id="myTab" role="tablist">
                   <li className="nav-item" role="presentation">
@@ -3288,6 +3501,15 @@ const EmployeeList = () => {
                                     departmentId: option.value,
                                   });
                                 }
+                              } else {
+                                // Clear selection
+                                handleSelectChange("departmentId", "");
+                                handleSelectChange("designationId", "");
+                                setSelectedDepartment("");
+                                setSelectedDesignation("");
+                                setDesignation([{ value: "", label: "Select" }]);
+                                clearFieldError('departmentId');
+                                clearFieldError('designationId');
                               }
                             }}
                           />
@@ -3536,8 +3758,9 @@ const EmployeeList = () => {
                       Cancel
                     </button>
                     <button
-                      type="submit"
+                      type="button"
                       className="btn btn-primary"
+                      onClick={handleSubmit}
                       disabled={isValidating || loading}
                     >
                       {isValidating ? (
@@ -3756,9 +3979,10 @@ const EmployeeList = () => {
                           </label>
                           <input
                             type="text"
-                            className="form-control"
+                            name="firstName"
+                            className={`form-control ${fieldErrors.firstName ? 'is-invalid' : ''}`}
                             value={editingEmployee?.firstName || ""}
-                            onChange={(e) =>
+                            onChange={(e) => {
                               setEditingEmployee((prev) =>
                                 prev
                                   ? { ...prev, firstName: e.target.value }
@@ -3766,6 +3990,9 @@ const EmployeeList = () => {
                               )
                             }
                           />
+                          {fieldErrors.firstName && (
+                            <div className="invalid-feedback d-block">{fieldErrors.firstName}</div>
+                          )}
                         </div>
                       </div>
                       <div className="col-md-6">
@@ -3773,9 +4000,10 @@ const EmployeeList = () => {
                           <label className="form-label">Last Name</label>
                           <input
                             type="text"
-                            className="form-control"
+                            name="lastName"
+                            className={`form-control ${fieldErrors.lastName ? 'is-invalid' : ''}`}
                             value={editingEmployee?.lastName || ""}
-                            onChange={(e) =>
+                            onChange={(e) => {
                               setEditingEmployee((prev) =>
                                 prev
                                   ? { ...prev, lastName: e.target.value }
@@ -3783,6 +4011,9 @@ const EmployeeList = () => {
                               )
                             }
                           />
+                          {fieldErrors.lastName && (
+                            <div className="invalid-feedback d-block">{fieldErrors.lastName}</div>
+                          )}
                         </div>
                       </div>
                       <div className="col-md-6">
@@ -3803,9 +4034,9 @@ const EmployeeList = () => {
                           <label className="form-label">
                             Joining Date <span className="text-danger"> *</span>
                           </label>
-                          <div className="input-icon-end position-relative">
+                          <div className={`input-icon-end position-relative ${fieldErrors.dateOfJoining ? 'has-error' : ''}`}>
                             <DatePicker
-                              className="form-control datetimepicker"
+                              className={`form-control datetimepicker ${fieldErrors.dateOfJoining ? 'is-invalid' : ''}`}
                               format="DD-MM-YYYY"
                               getPopupContainer={getModalContainer}
                               placeholder="DD-MM-YYYY"
@@ -3826,12 +4057,16 @@ const EmployeeList = () => {
                                       }
                                     : prev,
                                 );
+                                clearFieldError('dateOfJoining');
                               }}
                             />
                             <span className="input-icon-addon">
                               <i className="ti ti-calendar text-gray-7" />
                             </span>
                           </div>
+                          {fieldErrors.dateOfJoining && (
+                            <div className="invalid-feedback d-block">{fieldErrors.dateOfJoining}</div>
+                          )}
                         </div>
                       </div>
                       <div className="col-md-6">
@@ -3862,6 +4097,9 @@ const EmployeeList = () => {
                               }
                             }}
                           />
+                          {fieldErrors.userName && (
+                            <div className="invalid-feedback d-block">{fieldErrors.userName}</div>
+                          )}
                         </div>
                       </div>
 
@@ -3872,9 +4110,10 @@ const EmployeeList = () => {
                           </label>
                           <input
                             type="email"
-                            className="form-control"
+                            name="email"
+                            className={`form-control ${fieldErrors.email ? 'is-invalid' : ''}`}
                             value={editingEmployee?.contact?.email || ""}
-                            onChange={(e) =>
+                            onChange={(e) => {
                               setEditingEmployee((prev) =>
                                 prev
                                   ? {
@@ -3888,6 +4127,9 @@ const EmployeeList = () => {
                               )
                             }
                           />
+                          {fieldErrors.email && (
+                            <div className="invalid-feedback d-block">{fieldErrors.email}</div>
+                          )}
                         </div>
                       </div>
                       <div className="col-md-6">
@@ -4105,9 +4347,10 @@ const EmployeeList = () => {
                           </label>
                           <input
                             type="text"
-                            className="form-control"
+                            name="phone"
+                            className={`form-control ${fieldErrors.phone ? 'is-invalid' : ''}`}
                             value={editingEmployee?.contact?.phone || ""}
-                            onChange={(e) =>
+                            onChange={(e) => {
                               setEditingEmployee((prev) =>
                                 prev
                                   ? {
@@ -4140,14 +4383,17 @@ const EmployeeList = () => {
                               )
                             }
                           />
+                          {fieldErrors.phone && (
+                            <div className="invalid-feedback d-block">{fieldErrors.phone}</div>
+                          )}
                         </div>
                       </div>
                       <div className="col-md-6">
                         <div className="mb-3">
-                          <label className="form-label">Department</label>
+                          <label className="form-label">Department <span className="text-danger">*</span></label>
                           <CommonSelect
                             key={`dept-${editingEmployee?._id}-${editingEmployee?.departmentId}`}
-                            className="select"
+                            className={`select ${fieldErrors.departmentId ? 'is-invalid' : ''}`}
                             options={department}
                             defaultValue={
                               department.find(
@@ -4176,22 +4422,33 @@ const EmployeeList = () => {
                                   socket.emit("hrm/designations/get", {
                                     departmentId: option.value,
                                   });
-                                } else {
-                                  setDesignation([
-                                    { value: "", label: "Select" },
-                                  ]);
                                 }
+                              } else {
+                                // clear selection
+                                setSelectedDepartment("");
+                                setSelectedDesignation("");
+                                setDesignation([{ value: "", label: "Select" }]);
+                                setEditingEmployee((prev) =>
+                                  prev
+                                    ? { ...prev, departmentId: "", designationId: "" }
+                                    : prev
+                                );
+                                clearFieldError('departmentId');
+                                clearFieldError('designationId');
                               }
                             }}
                           />
+                          {fieldErrors.departmentId && (
+                            <div className="invalid-feedback d-block">{fieldErrors.departmentId}</div>
+                          )}
                         </div>
                       </div>
                       <div className="col-md-6">
                         <div className="mb-3">
-                          <label className="form-label">Designation</label>
+                          <label className="form-label">Designation <span className="text-danger">*</span></label>
                           <CommonSelect
                             key={`desig-${editingEmployee?._id}-${editingEmployee?.designationId}`}
-                            className="select"
+                            className={`select ${fieldErrors.designationId ? 'is-invalid' : ''}`}
                             options={designation}
                             defaultValue={
                               designation.find(
@@ -4207,9 +4464,21 @@ const EmployeeList = () => {
                                     ? { ...prev, designationId: option.value }
                                     : prev,
                                 );
+                                clearFieldError('designationId');
+                              } else {
+                                setSelectedDesignation("");
+                                setEditingEmployee((prev) =>
+                                  prev
+                                    ? { ...prev, designationId: "" }
+                                    : prev
+                                );
+                                clearFieldError('designationId');
                               }
                             }}
                           />
+                          {fieldErrors.designationId && (
+                            <div className="invalid-feedback d-block">{fieldErrors.designationId}</div>
+                          )}
                         </div>
                       </div>
                       <div className="col-md-6">
@@ -4256,7 +4525,7 @@ const EmployeeList = () => {
                                             ? "Active"
                                             : "Inactive",
                                         }
-                                      : prev,
+                                      : prev
                                   );
                                 }}
                               />
@@ -4320,7 +4589,6 @@ const EmployeeList = () => {
                     </button>
                     <button
                       type="button"
-                      data-bs-dismiss="modal"
                       className="btn btn-primary"
                       onClick={handleUpdateSubmit}
                     >
@@ -4454,14 +4722,7 @@ const EmployeeList = () => {
                     <button
                       type="button"
                       className="btn btn-primary"
-                      onClick={(e) => {
-                        handlePermissionUpdateSubmit(e);
-                        // Close modal after submission
-                        if (editEmployeeModalRef.current) {
-                          editEmployeeModalRef.current.click();
-                          setTimeout(() => closeModal(), 100);
-                        }
-                      }}
+                      onClick={handlePermissionUpdateSubmit}
                     >
                       Save{" "}
                     </button>
