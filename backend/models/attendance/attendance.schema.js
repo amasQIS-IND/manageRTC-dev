@@ -303,7 +303,7 @@ attendanceSchema.pre('save', function(next) {
 });
 
 // Method to clock in
-attendanceSchema.methods.clockIn = function(locationData, notes) {
+attendanceSchema.methods.performClockIn = function(locationData, notes) {
   this.clockIn = {
     time: new Date(),
     location: locationData?.type || 'office',
@@ -317,7 +317,7 @@ attendanceSchema.methods.clockIn = function(locationData, notes) {
 };
 
 // Method to clock out
-attendanceSchema.methods.clockOut = function(locationData, notes) {
+attendanceSchema.methods.performClockOut = function(locationData, notes) {
   this.clockOut = {
     time: new Date(),
     location: locationData?.type || 'office',

@@ -1,0 +1,69 @@
+# Dependencies
+node_modules/
+react/node_modules/
+backend/node_modules/
+
+# Production builds
+react/build/
+react/dist/
+backend/dist/
+
+# Testing
+coverage/
+.nyc_output/
+*.test.js
+*.test.ts
+*.test.tsx
+*.spec.js
+*.spec.ts
+*.spec.tsx
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Misc
+*.md
+!README.md
+!.ferb/docs/**/*.md
+
+# Lock files
+package-lock.json
+yarn.lock
+
+# Build artifacts
+*.tsbuildinfo
+react/build/
+react/public/
+
+# Config files
+webpack.config.js
+jest.config.js
+babel.config.js
+tsconfig.json
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# React specific
+react-scripts/

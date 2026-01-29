@@ -18,6 +18,9 @@ import goalTrackingRoutes from "./routes/performance/goalTracking.routes.js";
 import ticketRoutes from "./routes/tickets.routes.js";
 import { startPromotionScheduler } from "./jobs/promotionScheduler.js";
 
+// Swagger/OpenAPI Documentation
+import { specs, swaggerUi } from "./config/swagger.js";
+
 
 
 import performanceIndicatorRoutes from "./routes/performance/performanceIndicator.routes.js";
@@ -148,6 +151,16 @@ const initializeServer = async () => {
     app.use("/api/pipelines", pipelineRoutes);
     app.use("/api/holiday-types", holidayTypeRoutes);
     app.use("/api/promotions", promotionRoutes);
+
+    // API Documentation (Swagger)
+    app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs, {
+      explorer: true,
+      customCss: '.swagger-ui .topbar { display: none }',
+      customSiteTitle: 'manageRTC API Documentation',
+      swaggerOptions: {
+        persistAuthorization: true
+      }
+    }));
 
     app.get("/", (req, res) => {
       res.send("API is running");

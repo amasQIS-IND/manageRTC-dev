@@ -19,6 +19,7 @@ import ALLRoutes from "./feature-module/router/router";
 // Clerk
 import { ClerkProvider } from "@clerk/clerk-react";
 import { SocketProvider } from "./SocketContext";
+import { AuthProvider } from "./services/AuthProvider";
 
 // Expose Bootstrap globally so that data-bs-toggle="dropdown" and modal work
 (window as any).bootstrap = bootstrap;
@@ -32,13 +33,15 @@ root.render(
     publishableKey="pk_test_dXAtc2tpbmstNC5jbGVyay5hY2NvdW50cy5kZXYk"
     afterSignOutUrl="/"
   >
-    <SocketProvider>
-      <Provider store={store}>
-        <BrowserRouter basename={base_path}>
-          <ALLRoutes />
-        </BrowserRouter>
-      </Provider>
-    </SocketProvider>
+    <AuthProvider>
+      <SocketProvider>
+        <Provider store={store}>
+          <BrowserRouter basename={base_path}>
+            <ALLRoutes />
+          </BrowserRouter>
+        </Provider>
+      </SocketProvider>
+    </AuthProvider>
   </ClerkProvider>
   // </React.StrictMode>
 );
