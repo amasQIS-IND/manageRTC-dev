@@ -1,0 +1,15 @@
+{
+    "keep": {
+        "days": true,
+        "amount": 7
+    },
+    "auditLog": "M:\\hrms-tool-amasqis\\logs\\.545368b2f17c0e2f1a6498eb828ab0b7382cc077-audit.json",
+    "files": [
+        {
+            "date": 1769596923178,
+            "name": "M:\\hrms-tool-amasqis\\logs\\http-2026-01-28.log",
+            "hash": "7005155f1999fccebe13fc0285107f9d3fae8b8851fd3b4f022e406a2abf1dd0"
+        }
+    ],
+    "hashType": "sha256"
+}
