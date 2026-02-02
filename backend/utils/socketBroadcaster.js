@@ -1041,6 +1041,48 @@ export const broadcastDashboardEvents = {
 };
 
 /**
+ * Designation event broadcasters
+ */
+export const broadcastDesignationEvents = {
+  /**
+   * Broadcast designation created event
+   */
+  created: (io, companyId, designation) => {
+    broadcastToCompany(io, companyId, 'designation:created', {
+      designationId: designation._id,
+      title: designation.title,
+      department: designation.department,
+      level: designation.level,
+      createdBy: designation.createdBy
+    });
+  },
+
+  /**
+   * Broadcast designation updated event
+   */
+  updated: (io, companyId, designation) => {
+    broadcastToCompany(io, companyId, 'designation:updated', {
+      designationId: designation._id,
+      title: designation.title,
+      department: designation.department,
+      level: designation.level,
+      updatedBy: designation.updatedBy
+    });
+  },
+
+  /**
+   * Broadcast designation deleted event
+   */
+  deleted: (io, companyId, designationId, deletedBy) => {
+    broadcastToCompany(io, companyId, 'designation:deleted', {
+      designationId,
+      deletedBy,
+      timestamp: new Date().toISOString()
+    });
+  }
+};
+
+/**
  * Helper to get Socket.IO instance from request
  * In Express, we can attach io to app and access via req.app.get('io')
  */
@@ -1064,5 +1106,6 @@ export default {
   broadcastActivityEvents,
   broadcastPipelineEvents,
   broadcastDashboardEvents,
+  broadcastDesignationEvents,
   getSocketIO
 };

@@ -83,6 +83,9 @@ app.use(cors({
 
 app.use(express.json());
 
+// Note: We use manual token verification in the authenticate middleware
+// No need for clerkMiddleware() since we use verifyToken() directly
+
 console.log("[Deployment]: TEST TEST");
 
 // Serve static files from public directory

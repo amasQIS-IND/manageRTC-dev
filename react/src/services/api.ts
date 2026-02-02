@@ -65,6 +65,7 @@ const createApiClient = (): AxiosInstance => {
   });
 
   // Request interceptor - Add Clerk JWT token
+  // Company ID is extracted server-side from the token's public metadata (same as Socket.IO)
   client.interceptors.request.use(
     async (config: InternalAxiosRequestConfig) => {
       try {
@@ -73,7 +74,11 @@ const createApiClient = (): AxiosInstance => {
         if (token && config.headers) {
           config.headers.Authorization = `Bearer ${token}`;
         }
-        console.log(`[API] ${config.method?.toUpperCase()} ${config.url}`, config.params || '');
+
+        console.log(`[API] ${config.method?.toUpperCase()} ${config.url}`, {
+          params: config.params || '',
+          hasToken: !!token
+        });
       } catch (error) {
         console.error('[API] Failed to get auth token:', error);
       }
