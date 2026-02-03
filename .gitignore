@@ -6,6 +6,8 @@ react-org
 dist/
 build/
 *.js.map
+OLD/
+.env
 logs/
 # TypeScript compiled files in src
 **/src/**/dist/

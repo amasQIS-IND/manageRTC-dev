@@ -45,10 +45,10 @@ export const validate = (schema, property = 'body') => {
     }
 
     // Replace request property with sanitized value
-    // Note: In Express 5, req.query is read-only, so we need to handle it differently
+    // Note: Cannot directly assign to req.query in Express 4.17+ (read-only)
+    // So we store the sanitized value in a custom property
     if (property === 'query') {
-      // Merge validated values into req.query instead of replacing
-      Object.assign(req[property], value);
+      req.validatedQuery = value;
     } else {
       req[property] = value;
     }

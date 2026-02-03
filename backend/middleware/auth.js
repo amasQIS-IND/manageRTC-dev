@@ -4,6 +4,9 @@
  * Uses the same token verification approach as Socket.IO
  */
 
+import dotenv from "dotenv";
+dotenv.config();
+
 import { clerkClient, verifyToken } from "@clerk/express";
 
 // ⚠️ SECURITY WARNING: Development mode is hardcoded to true!
@@ -92,7 +95,8 @@ export const authenticate = async (req, res, next) => {
 
     // Extract role and companyId from user metadata (same as Socket.IO)
     let role = user.publicMetadata?.role || 'public';
-    let companyId = user.publicMetadata?.companyId || null;
+    // Check for both 'companyId' and 'company' field names in metadata
+    let companyId = user.publicMetadata?.companyId || user.publicMetadata?.company || null;
 
     console.log('[Auth Middleware] User metadata:', {
       userId: user.id,
@@ -183,6 +187,13 @@ export const requireRole = (...roles) => {
 
     // Check if user has one of the required roles
     if (!roles.includes(req.user.role)) {
+      console.warn('[Authorization Failed]', {
+        userId: req.user.userId,
+        userRole: req.user.role,
+        requiredRoles: roles,
+        requestId: req.id
+      });
+
       return res.status(403).json({
         success: false,
         error: {
@@ -192,6 +203,14 @@ export const requireRole = (...roles) => {
         },
       });
     }
+
+    // User is authenticated and has required role
+    console.log('[Authorization Success]', {
+      userId: req.user.userId,
+      role: req.user.role,
+      companyId: req.user.companyId,
+      requestId: req.id
+    });
 
     next();
   };
@@ -261,7 +280,8 @@ export const optionalAuth = async (req, res, next) => {
 
         req.user = {
           userId: verifiedToken.sub,
-          companyId: user.publicMetadata?.companyId || null,
+          // Check for both 'companyId' and 'company' field names in metadata
+          companyId: user.publicMetadata?.companyId || user.publicMetadata?.company || null,
           role: user.publicMetadata?.role || 'public',
           email: user.primaryEmailAddress?.emailAddress
         };
