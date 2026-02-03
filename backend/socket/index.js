@@ -4,25 +4,19 @@ import router from "./router.js";
 import { clerkClient, verifyToken } from "@clerk/express";
 dotenv.config();
 
-// ⚠️ SECURITY WARNING: Development mode is hardcoded to true!
-// This is a DEVELOPMENT workaround that MUST be removed before production deployment.
-// In production, this should be: process.env.NODE_ENV !== "production"
-// Rate limiting and companyId auto-assignment are DISABLED in development mode!
+// Environment detection for logging purposes
 const isDevelopment = process.env.NODE_ENV === "development" || process.env.DEV_MODE === "true";
 
-// Rate limiting configuration (disabled in development)
+// Rate limiting configuration
 
 const rateLimitMap = new Map();
 const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute
 const RATE_LIMIT_MAX_REQUESTS = 100; // Max requests per minute per user
 
 const checkRateLimit = (userId) => {
-  // ⚠️ SECURITY: Rate limiting disabled in development mode!
-  // This is a DEVELOPMENT workaround that MUST be removed before production deployment.
-  if (isDevelopment) {
-    console.warn("⚠️ Rate limiting DISABLED in development mode!");
-    return true;
-  }
+  // SECURITY FIX: Rate limiting is now ENABLED in all environments
+  // Development mode users must respect rate limits to prevent abuse
+  // Adjust RATE_LIMIT_MAX_REQUESTS in .env for different environments if needed
 
   const now = Date.now();
   const userKey = `user:${userId}`;
@@ -41,6 +35,7 @@ const checkRateLimit = (userId) => {
   }
 
   if (userLimit.count >= RATE_LIMIT_MAX_REQUESTS) {
+    console.warn(`⚠️ Rate limit exceeded for user ${userId}`);
     return false;
   }
 
@@ -48,17 +43,15 @@ const checkRateLimit = (userId) => {
   return true;
 };
 
-// Clean up old rate limit entries (only in production)
-if (!isDevelopment) {
-  setInterval(() => {
-    const now = Date.now();
-    for (const [key, value] of rateLimitMap.entries()) {
-      if (now > value.resetTime) {
-        rateLimitMap.delete(key);
-      }
+// Clean up old rate limit entries (runs in all environments)
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of rateLimitMap.entries()) {
+    if (now > value.resetTime) {
+      rateLimitMap.delete(key);
     }
-  }, RATE_LIMIT_WINDOW);
-}
+  }
+}, RATE_LIMIT_WINDOW);
 
 const allowedOrigins = [
   "http://localhost:3000",
@@ -138,17 +131,15 @@ export const socketHandler = (httpServer) => {
         // Check for both 'companyId' and 'company' field names in metadata
         let companyId = user.publicMetadata?.companyId || user.publicMetadata?.company || null;
 
-        // ⚠️ SECURITY WARNING: DEVELOPMENT WORKAROUND!
-        // Auto-assigning companyId for admin users in development
-        // This is a TEMPORARY FIX that MUST be removed before production deployment!
-        // Hardcoded companyId: 68443081dcdfe43152aebf80
-        if (isDevelopment && role === "admin" && !companyId) {
-          companyId = "68443081dcdfe43152aebf80";
-          console.warn(
-            `🔧 DEVELOPMENT WORKAROUND: Auto-assigning companyId ${companyId} to admin user`
+        // SECURITY FIX REMOVED: Hardcoded companyId assignment has been removed
+        // All users must have a valid companyId in their Clerk metadata
+        // This prevents cross-tenant data access in both development and production
+        if (!companyId && (role === "admin" || role === "hr" || role === "employee")) {
+          console.error(
+            `❌ SECURITY: User ${user.id} with role '${role}' missing required companyId`
           );
-          console.warn(
-            "⚠️ This hardcoded companyId assignment MUST be removed before production!"
+          return next(
+            new Error("Authentication error: Company ID required for this role")
           );
         }
 
@@ -161,20 +152,19 @@ export const socketHandler = (httpServer) => {
         });
 
         if (!role) {
-          // SECURITY FIX: Never auto-assign admin role
-          // Only assign 'employee' role if they have a companyId and are verified
+          // SECURITY FIX: Never auto-assign admin role, even in development
+          // Users without a role must be explicitly configured in Clerk
           if (companyId && user.publicMetadata?.isVerified) {
-            role = "employee"; // Default to employee, not admin
-          } else if (isDevelopment && companyId) {
-            role = "admin"; // In development, allow admin role for testing
-            console.log(`[Development] Setting admin role for user ${user.id}`);
+            role = "employee"; // Only assign employee if verified
+            console.log(`User ${user.id} assigned default role: ${role}`);
           } else {
             role = "public"; // Public users have no company access
+            console.log(`User ${user.id} has no role/verification, setting as: ${role}`);
           }
 
-          // Log suspicious activity
+          // Log for security auditing
           console.warn(
-            `User ${user.id} had no role assigned, defaulting to: ${role}`
+            `⚠️ User ${user.id} had no role assigned, defaulting to: ${role}`
           );
 
           // Update metadata with the assigned role
@@ -186,33 +176,23 @@ export const socketHandler = (httpServer) => {
         }
 
         // SECURITY CHECK: Verify admin role is legitimate
+        // Admin access requires both companyId and verification flag in all environments
         if (role === "admin") {
           console.log(`Checking admin access for user ${user.id}...`);
-          // In development, allow admin access if they have companyId
-          if (isDevelopment) {
-            if (!companyId) {
-              console.error(
-                `Admin user ${user.id} missing companyId in development`
-              );
-              return next(new Error("Admin users must have a companyId"));
-            }
-            console.log(
-              `✅ Development: Allowing admin access for user ${user.id} with companyId: ${companyId}`
+
+          // All environments require the same security for admin access
+          if (!companyId || !user.publicMetadata?.isAdminVerified) {
+            console.error(
+              `❌ SECURITY: Unauthorized admin access attempt by user ${user.id}`
             );
-          } else {
-            // In production, require proper verification
-            if (!companyId || !user.publicMetadata?.isAdminVerified) {
-              console.error(
-                `Unauthorized admin access attempt by user ${user.id} in production`
-              );
-              return next(
-                new Error("Unauthorized: Admin access requires verification")
-              );
-            }
-            console.log(
-              `✅ Production: Verified admin access for user ${user.id}`
+            console.error(`Missing: ${!companyId ? 'companyId ' : ''}${!user.publicMetadata?.isAdminVerified ? 'isAdminVerified flag' : ''}`);
+            return next(
+              new Error("Unauthorized: Admin access requires companyId and verification")
             );
           }
+          console.log(
+            `✅ Verified admin access for user ${user.id} with companyId: ${companyId}`
+          );
         }
 
         // Store user ID for easy access & Mark socket as authenticated

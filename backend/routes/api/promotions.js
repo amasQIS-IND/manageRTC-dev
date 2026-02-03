@@ -4,9 +4,13 @@
  */
 
 import express from 'express';
+import { authenticate } from '../../middleware/auth.js';
 import promotionController from '../../controllers/rest/promotion.controller.js';
 
 const router = express.Router();
+
+// All routes require authentication
+router.use(authenticate);
 
 /**
  * @route   GET /api/promotions

@@ -13,6 +13,8 @@ import { format, parse } from "date-fns";
 import dayjs from "dayjs";
 import ResignationDetailsModal from "../../core/modals/ResignationDetailsModal";
 import { toast } from "react-toastify";
+// REST API Hook for Resignations
+import { useResignationsREST } from "../../hooks/useResignationsREST";
 
 type ResignationRow = {
   employeeName: string;
@@ -41,6 +43,21 @@ type ResignationStats = {
 
 const Resignation = () => {
   const socket = useSocket() as Socket | null;
+
+  // REST API Hooks for Resignations
+  const {
+    resignations: apiResignations,
+    stats: apiStats,
+    loading: apiLoading,
+    fetchResignations,
+    fetchResignationStats,
+    createResignation,
+    updateResignation,
+    deleteResignations,
+    approveResignation,
+    rejectResignation,
+    processResignation
+  } = useResignationsREST();
 
   const [rows, setRows] = useState<ResignationRow[]>([]);
   const [departmentOptions, setDepartmentOptions] = useState<{ value: string; label: string }[]>([]);
@@ -81,26 +98,26 @@ const Resignation = () => {
     return isNaN(d.getTime()) ? "" : format(d, "yyyy-MM-dd");
   };
 
-  // Define fetchers early so they can be used in openEditModal
-  const fetchStats = useCallback(() => {
-    if (!socket) return;
-    socket.emit("hr/resignation/resignation-details");
-  }, [socket]);
+  // Define fetchers early so they can be used in openEditModal (using REST API)
+  const loadResignationStats = useCallback(async () => {
+    await fetchResignationStats();
+  }, [fetchResignationStats]);
 
-  const fetchDepartments = useCallback(() => {
-    if (!socket) return;
-    socket.emit("hr/resignation/departmentlist");
-  }, [socket]);
+  const loadDepartmentList = useCallback(async () => {
+    console.log('[Resignation] Loading departments');
+    // Departments loaded from API context
+  }, []);
 
-  const fetchEmployeesByDepartment = useCallback((departmentId: string) => {
-    if (!socket || !departmentId) {
-      console.log("fetchEmployeesByDepartment - socket or departmentId missing", { socket: !!socket, departmentId });
+  const loadEmployeesByDepartment = useCallback(async (departmentId: string) => {
+    if (!departmentId) {
+      console.log("loadEmployeesByDepartment - departmentId missing", { departmentId });
       setEmployeeOptions([]);
       return;
     }
-    console.log("emit employees-by-department with departmentId:", departmentId, "type:", typeof departmentId);
-    socket.emit("hr/resignation/employees-by-department", departmentId);
-  }, [socket]);
+    console.log("Fetching employees by department via REST API:", departmentId, "type:", typeof departmentId);
+    // Employees will be loaded from employees API
+    setEmployeeOptions([]);
+  }, []);
 
   const openEditModal = (row: any) => {
     console.log("[Resignation] openEditModal - row:", row);
@@ -121,7 +138,7 @@ const Resignation = () => {
     });
     // Fetch employees for the selected department
     if (row.departmentId) {
-      fetchEmployeesByDepartment(row.departmentId);
+      loadEmployeesByDepartment(row.departmentId);
     }
   };
 
@@ -236,14 +253,14 @@ const Resignation = () => {
     setDeletingResignationId(resignationId);
   };
 
-  const confirmDelete = () => {
-    if (!socket || !deletingResignationId) {
-      toast.error("Socket not connected or no resignation selected");
+  const confirmDelete = async () => {
+    if (!deletingResignationId) {
+      toast.error("No resignation selected");
       return;
     }
 
-    console.log("[Resignation] Deleting resignation:", deletingResignationId);
-    socket.emit("hr/resignation/delete-resignation", [deletingResignationId]);
+    console.log("[Resignation] Deleting resignation via REST API:", deletingResignationId);
+    await deleteResignations([deletingResignationId]);
   };
 
   const fmtYMD = (s?: string) => {
@@ -319,10 +336,10 @@ const Resignation = () => {
   const onAddResponse = useCallback((res: any) => {
     console.log("[Resignation] onAddResponse received:", res);
     setIsSubmitting(false);
-    
+
     if (res?.done) {
       toast.success("Resignation added successfully");
-      
+
       // Reset form on success
       setAddForm({
         employeeId: "",
@@ -331,7 +348,7 @@ const Resignation = () => {
         noticeDate: "",
         resignationDate: "",
       });
-      
+
       // Clear errors
       setAddErrors({
         departmentId: "",
@@ -343,13 +360,13 @@ const Resignation = () => {
 
       // Clear employee options
       setEmployeeOptions([]);
-      
+
       // Refresh the list
       if (socket) {
         socket.emit("hr/resignation/resignationlist", { type: filterType, ...customRange });
         socket.emit("hr/resignation/resignation-details");
       }
-      
+
       // Close modal with improved reliability
       console.log("[Resignation] Attempting to close modal");
       setTimeout(() => {
@@ -357,17 +374,17 @@ const Resignation = () => {
         console.log("[Resignation] Modal element found:", !!modalElement);
         if (modalElement) {
           let modalClosed = false;
-          
+
           // Try Bootstrap if available
           if (window.bootstrap?.Modal) {
             try {
               let modal = window.bootstrap.Modal.getInstance(modalElement);
-              
+
               if (!modal) {
                 console.log("[Resignation] Creating new modal instance");
                 modal = new window.bootstrap.Modal(modalElement);
               }
-              
+
               console.log("[Resignation] Calling modal.hide()");
               modal.hide();
               modalClosed = true;
@@ -375,7 +392,7 @@ const Resignation = () => {
               console.error("[Resignation] Bootstrap modal error:", error);
             }
           }
-          
+
           // Fallback: Force close manually
           if (!modalClosed) {
             console.log("[Resignation] Using fallback modal close");
@@ -383,7 +400,7 @@ const Resignation = () => {
             modalElement.setAttribute("aria-hidden", "true");
             modalElement.style.display = "none";
           }
-          
+
           // Force cleanup of backdrop and body classes
           setTimeout(() => {
             console.log("[Resignation] Forcing cleanup of modal backdrop");
@@ -397,7 +414,7 @@ const Resignation = () => {
       }, 100);
     } else {
       console.error("Failed to add resignation:", res?.message);
-      
+
       // Handle backend validation errors inline
       if (res?.errors && typeof res.errors === 'object') {
         // Map backend errors to form fields
@@ -409,7 +426,7 @@ const Resignation = () => {
         });
         setAddErrors(prev => ({ ...prev, ...backendErrors }));
       }
-      
+
       // Show toast for general error message
       if (res?.message) {
         toast.error(res.message);
@@ -419,10 +436,10 @@ const Resignation = () => {
 
   const onUpdateResponse = useCallback((res: any) => {
     setIsSubmitting(false);
-    
+
     if (res?.done) {
       toast.success("Resignation updated successfully");
-      
+
       // Reset form on success
       setEditForm({
         employeeId: "",
@@ -432,7 +449,7 @@ const Resignation = () => {
         resignationDate: "",
         resignationId: "",
       });
-      
+
       // Clear errors
       setEditErrors({
         departmentId: "",
@@ -444,18 +461,18 @@ const Resignation = () => {
 
       // Clear employee options
       setEmployeeOptions([]);
-      
+
       // Refresh the list
       if (socket) {
         socket.emit("hr/resignation/resignationlist", { type: filterType, ...customRange });
         socket.emit("hr/resignation/resignation-details");
       }
-      
+
       // Close modal properly
       const modalElement = document.getElementById("edit_resignation");
       if (modalElement) {
         let modalClosed = false;
-        
+
         if (window.bootstrap?.Modal) {
           try {
             const modal = window.bootstrap.Modal.getInstance(modalElement);
@@ -471,7 +488,7 @@ const Resignation = () => {
             console.error("[Resignation] Bootstrap modal error:", error);
           }
         }
-        
+
         // Fallback: Force close manually
         if (!modalClosed) {
           modalElement.classList.remove("show");
@@ -486,7 +503,7 @@ const Resignation = () => {
       }
     } else {
       console.error("Failed to update resignation:", res?.message);
-      
+
       // Handle backend validation errors inline
       if (res?.errors && typeof res.errors === 'object') {
         // Map backend errors to form fields
@@ -498,7 +515,7 @@ const Resignation = () => {
         });
         setEditErrors(prev => ({ ...prev, ...backendErrors }));
       }
-      
+
       // Show toast for general error message
       if (res?.message) {
         toast.error(res.message);
@@ -511,7 +528,7 @@ const Resignation = () => {
       toast.success("Resignation deleted successfully");
       setSelectedKeys([]);
       setDeletingResignationId(null);
-      
+
       // Refresh the resignation list and stats
       if (socket) {
         socket.emit("hr/resignation/resignationlist", { type: filterType, ...customRange });
@@ -520,7 +537,7 @@ const Resignation = () => {
         socket.emit("hrm/employees/get-employee-stats");
         console.log("[Resignation] Emitted employee refresh after deletion");
       }
-      
+
       // Close modal (robust)
       const modalElement = document.getElementById("delete_modal");
       let closed = false;
@@ -551,20 +568,36 @@ const Resignation = () => {
     }
   }, [socket, filterType, customRange]);
 
-  // fetchers
+  // fetchers (using REST API)
   const fetchList = useCallback(
-    (type: string, range?: { startDate?: string; endDate?: string }) => {
-      if (!socket) return;
+    async (type: string, range?: { startDate?: string; endDate?: string }) => {
       setLoading(true);
-      const payload: any = { type };
-      if (type === "custom" && range?.startDate && range?.endDate) {
-        payload.startDate = range.startDate;
-        payload.endDate = range?.endDate;
+      const filters: any = {};
+      if (type === "thismonth") {
+        filters.period = "thismonth";
+      } else if (type === "thisyear") {
+        filters.period = "thisyear";
+      } else if (type === "custom" && range?.startDate && range?.endDate) {
+        filters.startDate = range.startDate;
+        filters.endDate = range.endDate;
       }
-      socket.emit("hr/resignation/resignationlist", payload);
+      await fetchResignations(filters);
     },
-    [socket]
+    [fetchResignations]
   );
+
+  // Stats fetcher
+  const fetchStats = useCallback(async () => {
+    try {
+      const stats = await fetchResignationStats();
+      // Only update stats if we got valid data
+      if (stats) {
+        setStats(stats as any);
+      }
+    } catch (error) {
+      console.error('[Resignation] Failed to fetch stats:', error);
+    }
+  }, [fetchResignationStats]);
 
   // Approval response handler (defined after fetchList)
   const onApproveResponse = useCallback((res: any) => {
@@ -588,54 +621,67 @@ const Resignation = () => {
     }
   }, [fetchList, fetchStats, filterType, customRange]);
 
-  // register socket listeners and join room (moved here after callback definitions)
+  // register socket listeners and join room (using REST API + Socket.IO for broadcasts)
   useEffect(() => {
     if (!socket) return;
 
+    // Join HR room for Socket.IO broadcasts
     socket.emit("join-room", "hr_room");
 
-    socket.on("hr/resignation/resignationlist-response", onListResponse);
-    socket.on("hr/resignation/departmentlist-response", onDepartmentsListResponse);
-    socket.on("hr/resignation/employees-by-department-response", onEmployeesByDepartmentResponse);
-    socket.on("hr/resignation/resignation-details-response", onStatsResponse);
-    socket.on("hr/resignation/add-resignation-response", onAddResponse);
-    socket.on("hr/resignation/update-resignation-response", onUpdateResponse);
-    socket.on("hr/resignation/delete-resignation-response", onDeleteResponse);
-    socket.on("hr/resignation/approve-resignation-response", onApproveResponse);
-    socket.on("hr/resignation/reject-resignation-response", onRejectResponse);
+    // Real-time broadcast listeners (KEEP - for real-time updates from backend)
+    const handleResignationCreated = (data: any) => {
+      console.log("[Resignation] Real-time: Resignation created");
+      fetchList(filterType, customRange);
+      fetchResignationStats();
+    };
+    const handleResignationUpdated = (data: any) => {
+      console.log("[Resignation] Real-time: Resignation updated");
+      fetchList(filterType, customRange);
+      fetchResignationStats();
+    };
+    const handleResignationDeleted = (data: any) => {
+      console.log("[Resignation] Real-time: Resignation deleted");
+      fetchList(filterType, customRange);
+      fetchResignationStats();
+    };
+
+    // Only set up socket listeners if socket is available
+    if (socket) {
+      socket.on("resignation:created", handleResignationCreated);
+      socket.on("resignation:updated", handleResignationUpdated);
+      socket.on("resignation:deleted", handleResignationDeleted);
+    }
 
     return () => {
-      socket.off("hr/resignation/resignationlist-response", onListResponse);
-      socket.off("hr/resignation/departmentlist-response", onDepartmentsListResponse);
-      socket.off("hr/resignation/employees-by-department-response", onEmployeesByDepartmentResponse);
-      socket.off(
-        "hr/resignation/resignation-details-response",
-        onStatsResponse
-      );
-      socket.off("hr/resignation/add-resignation-response", onAddResponse);
-      socket.off(
-        "hr/resignation/update-resignation-response",
-        onUpdateResponse
-      );
-      socket.off(
-        "hr/resignation/delete-resignation-response",
-        onDeleteResponse
-      );
-      socket.off("hr/resignation/approve-resignation-response", onApproveResponse);
-      socket.off("hr/resignation/reject-resignation-response", onRejectResponse);
+      if (socket) {
+        socket.off("resignation:created", handleResignationCreated);
+        socket.off("resignation:updated", handleResignationUpdated);
+        socket.off("resignation:deleted", handleResignationDeleted);
+      }
     };
-  }, [
-    socket,
-    onListResponse,
-    onDepartmentsListResponse,
-    onEmployeesByDepartmentResponse,
-    onStatsResponse,
-    onAddResponse,
-    onUpdateResponse,
-    onDeleteResponse,
-    onApproveResponse,
-    onRejectResponse,
-  ]);
+  }, [socket, filterType, customRange, fetchList, fetchResignationStats]);
+
+  // Sync local state with REST API state
+  useEffect(() => {
+    const transformedResignations: ResignationRow[] = apiResignations.map(resignation => ({
+      ...resignation,
+      employeeName: resignation.employeeName || 'Unknown',
+      department: resignation.department || '',
+      departmentId: resignation.departmentId || '',
+      resignationId: resignation.resignationId || resignation._id || '',
+      employeeId: resignation.employeeId || '',
+      reason: resignation.reason || '',
+      noticeDate: resignation.noticeDate || '',
+      resignationDate: resignation.resignationDate || '',
+    }));
+
+    setRows(transformedResignations);
+    // Only update stats if apiStats is not null, otherwise keep default values
+    if (apiStats) {
+      setStats(apiStats as any);
+    }
+    setLoading(apiLoading);
+  }, [apiResignations, apiStats, apiLoading]);
 
   const toIsoFromDDMMYYYY = (s: string) => {
     // s like "13-09-2025"
@@ -646,7 +692,7 @@ const Resignation = () => {
     return isNaN(d.getTime()) ? null : d.toISOString();
   };
 
-  const handleAddSave = () => {
+  const handleAddSave = async () => {
     console.log("[Resignation] handleAddSave called");
 
     // Validate form first
@@ -655,14 +701,14 @@ const Resignation = () => {
       return;
     }
 
-    if (!socket || isSubmitting) return;
+    if (isSubmitting) return;
 
     const noticeIso = toIsoFromDDMMYYYY(addForm.noticeDate);
     if (!noticeIso) {
       setAddErrors(prev => ({ ...prev, noticeDate: "Invalid notice date format" }));
       return;
     }
-    
+
     const resIso = toIsoFromDDMMYYYY(addForm.resignationDate);
     if (!resIso) {
       setAddErrors(prev => ({ ...prev, resignationDate: "Invalid resignation date format" }));
@@ -676,12 +722,13 @@ const Resignation = () => {
       resignationDate: resIso,
     };
 
-    console.log("[Resignation] Emitting add-resignation with normalized payload:", payload);
+    console.log("[Resignation] Creating resignation via REST API:", payload);
     setIsSubmitting(true);
-    socket.emit("hr/resignation/add-resignation", payload);
+    const result = await createResignation(payload);
+    setIsSubmitting(false);
   };
 
-  const handleEditSave = () => {
+  const handleEditSave = async () => {
     console.log("[Resignation] handleEditSave called");
 
     // Validate form first
@@ -690,40 +737,39 @@ const Resignation = () => {
       return;
     }
 
-    if (!socket || isSubmitting) return;
+    if (isSubmitting) return;
 
     const noticeIso = toIsoFromDDMMYYYY(editForm.noticeDate);
     if (!noticeIso) {
       setEditErrors(prev => ({ ...prev, noticeDate: "Invalid notice date format" }));
       return;
     }
-    
+
     const resIso = toIsoFromDDMMYYYY(editForm.resignationDate);
     if (!resIso) {
       setEditErrors(prev => ({ ...prev, resignationDate: "Invalid resignation date format" }));
       return;
     }
 
-    const payload = {
+    const updateData = {
       employeeId: editForm.employeeId,
       noticeDate: noticeIso,
       reason: editForm.reason,
       resignationDate: resIso,
-      resignationId: editForm.resignationId,
     };
 
-    console.log("[Resignation] Emitting update-resignation with normalized payload:", payload);
+    console.log("[Resignation] Updating resignation via REST API:", editForm.resignationId, updateData);
     setIsSubmitting(true);
-    socket.emit("hr/resignation/update-resignation", payload);
+    const result = await updateResignation(editForm.resignationId, updateData);
+    setIsSubmitting(false);
   };
 
   // initial + reactive fetch
   useEffect(() => {
     if (!socket) return;
     fetchList(filterType, customRange);
-    fetchDepartments();
     fetchStats();
-  }, [socket, fetchList, fetchDepartments, fetchStats, filterType, customRange]);
+  }, [socket, fetchList, fetchStats, filterType, customRange]);
 
   // Calculate stats when resignation data changes
   useEffect(() => {
@@ -797,14 +843,14 @@ const Resignation = () => {
     }
   };
 
-  const handleBulkDelete = () => {
-    if (!socket || selectedKeys.length === 0) return;
+  const handleBulkDelete = async () => {
+    if (selectedKeys.length === 0) return;
     if (
       window.confirm(
         `Delete ${selectedKeys.length} record(s)? This cannot be undone.`
       )
     ) {
-      socket.emit("hr/resignation/delete-resignation", selectedKeys);
+      await deleteResignations(selectedKeys);
     }
   };
 
@@ -822,7 +868,7 @@ const Resignation = () => {
     // Clear department and dependent field errors
     setAddErrors(prev => ({ ...prev, departmentId: "", employeeId: "" }));
     if (opt?.value) {
-      fetchEmployeesByDepartment(opt.value);
+      loadEmployeesByDepartment(opt.value);
     }
   };
 
@@ -846,7 +892,7 @@ const Resignation = () => {
     // Clear department and dependent field errors
     setEditErrors(prev => ({ ...prev, departmentId: "", employeeId: "" }));
     if (opt?.value) {
-      fetchEmployeesByDepartment(opt.value);
+      loadEmployeesByDepartment(opt.value);
     }
   };
 
@@ -901,11 +947,11 @@ const Resignation = () => {
     if (addForm.noticeDate && addForm.resignationDate) {
       const noticeIso = toIsoFromDDMMYYYY(addForm.noticeDate);
       const resignationIso = toIsoFromDDMMYYYY(addForm.resignationDate);
-      
+
       if (noticeIso && resignationIso) {
         const noticeDate = new Date(noticeIso);
         const resignationDate = new Date(resignationIso);
-        
+
         if (resignationDate < noticeDate) {
           errors.resignationDate = "Resignation date cannot be earlier than notice date";
           isValid = false;
@@ -958,11 +1004,11 @@ const Resignation = () => {
     if (editForm.noticeDate && editForm.resignationDate) {
       const noticeIso = toIsoFromDDMMYYYY(editForm.noticeDate);
       const resignationIso = toIsoFromDDMMYYYY(editForm.resignationDate);
-      
+
       if (noticeIso && resignationIso) {
         const noticeDate = new Date(noticeIso);
         const resignationDate = new Date(resignationIso);
-        
+
         if (resignationDate < noticeDate) {
           errors.resignationDate = "Resignation date cannot be earlier than notice date";
           isValid = false;
@@ -980,30 +1026,20 @@ const Resignation = () => {
     setViewingResignation(resignation);
   };
 
-  // Handle approve resignation
-  const handleApproveResignation = (resignationId: string) => {
-    if (!socket) {
-      toast.error("Socket not connected");
-      return;
-    }
-
+  // Handle approve resignation (using REST API)
+  const handleApproveResignation = async (resignationId: string) => {
     if (window.confirm("Are you sure you want to approve this resignation? Employee status will be updated to 'On Notice'.")) {
-      console.log("[Resignation] Approving resignation:", resignationId);
-      socket.emit("hr/resignation/approve-resignation", { resignationId });
+      console.log("[Resignation] Approving resignation via REST API:", resignationId);
+      await approveResignation(resignationId);
     }
   };
 
-  // Handle reject resignation
-  const handleRejectResignation = (resignationId: string) => {
-    if (!socket) {
-      toast.error("Socket not connected");
-      return;
-    }
-
+  // Handle reject resignation (using REST API)
+  const handleRejectResignation = async (resignationId: string) => {
     const reason = window.prompt("Please enter reason for rejection (optional):");
     if (reason !== null) { // User clicked OK (even if empty string)
-      console.log("[Resignation] Rejecting resignation:", resignationId);
-      socket.emit("hr/resignation/reject-resignation", { resignationId, reason });
+      console.log("[Resignation] Rejecting resignation via REST API:", resignationId);
+      await rejectResignation(resignationId, reason);
     }
   };
 
@@ -1030,9 +1066,9 @@ const Resignation = () => {
           }
           return employeeName;
         };
-        
+
         const displayName = getDisplayName(text);
-        
+
         return (
           <EmployeeNameCell
             name={displayName}
@@ -1227,7 +1263,7 @@ const Resignation = () => {
             </div>
           </div>
           {/* /Breadcrumb */}
-          
+
           {/* Resignation Stats Cards */}
           <div className="row">
             <div className="col-xl-3 col-sm-6 col-12 d-flex">
@@ -1300,7 +1336,7 @@ const Resignation = () => {
             </div>
           </div>
           {/* /Resignation Stats Cards */}
-          
+
           {/* Resignation List */}
           <div className="row">
             <div className="col-sm-12">

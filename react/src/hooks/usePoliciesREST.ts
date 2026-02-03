@@ -33,6 +33,11 @@ export interface PolicyStats {
   active: number;
   inactive: number;
   applyToAllCount: number;
+  // Backend response fields (these are the actual fields returned)
+  totalPolicies?: number;
+  activePolicies?: number;
+  pendingPolicies?: number;
+  departmentSpecificCount?: number;
 }
 
 export interface PolicyFilters {
@@ -86,11 +91,23 @@ export const usePoliciesREST = () => {
    */
   const fetchPolicyStats = useCallback(async () => {
     try {
-      const response: ApiResponse<PolicyStats> = await get('/policies/stats');
+      const response: ApiResponse<any> = await get('/policies/stats');
 
       if (response.success && response.data) {
-        setStats(response.data);
-        return response.data;
+        // Transform backend response to match frontend interface
+        const backendStats = response.data;
+        const transformedStats: PolicyStats = {
+          total: backendStats.totalPolicies || 0,
+          active: backendStats.activePolicies || 0,
+          inactive: backendStats.pendingPolicies || 0,
+          applyToAllCount: backendStats.applyToAllCount || 0,
+          totalPolicies: backendStats.totalPolicies,
+          activePolicies: backendStats.activePolicies,
+          pendingPolicies: backendStats.pendingPolicies,
+          departmentSpecificCount: backendStats.departmentSpecificCount
+        };
+        setStats(transformedStats);
+        return transformedStats;
       }
       throw new Error(response.error?.message || 'Failed to fetch policy stats');
     } catch (err: any) {

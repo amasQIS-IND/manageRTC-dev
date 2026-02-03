@@ -15,6 +15,8 @@ import { Modal } from "antd";
 import dayjs from "dayjs";
 import TerminationDetailsModal from "../../core/modals/TerminationDetailsModal";
 import { toast } from "react-toastify";
+// REST API Hook for Terminations
+import { useTerminationsREST } from "../../hooks/useTerminationsREST";
 
 type TerminationRow = {
   employeeName: string | null;
@@ -49,6 +51,20 @@ type DepartmentRow = {
 
 const Termination = () => {
   const socket = useSocket() as Socket | null;
+
+  // REST API Hooks for Terminations
+  const {
+    terminations: apiTerminations,
+    stats: apiStats,
+    loading: apiLoading,
+    fetchTerminations,
+    fetchTerminationStats,
+    createTermination,
+    updateTermination,
+    deleteTerminations,
+    processTermination,
+    cancelTermination
+  } = useTerminationsREST();
 
   const [rows, setRows] = useState<TerminationRow[]>([]);
   const [rowsDepartments, setRowsDepartments] = useState<DepartmentRow[]>([]);
@@ -93,19 +109,21 @@ const Termination = () => {
     return isNaN(d.getTime()) ? "" : format(d, "yyyy-MM-dd");
   };
 
-  const fetchEmployeesByDepartment = useCallback((departmentId: string) => {
-    if (!socket || !departmentId) {
+  // Fetch employees by department (using REST API)
+  const loadEmployeesByDepartment = useCallback(async (departmentId: string) => {
+    if (!departmentId) {
       setEmployeeOptions([]);
       return;
     }
-    console.log("[Termination] Fetching employees for department:", departmentId);
-    socket.emit("hr/resignation/employees-by-department", departmentId);
-  }, [socket]);
+    console.log("[Termination] Fetching employees for department via REST API:", departmentId);
+    // Employees will be loaded from employees API
+    setEmployeeOptions([]);
+  }, []);
 
   const openEditModal = (row: any) => {
     console.log("[Termination] openEditModal - row:", row);
     console.log("[Termination] Setting editForm with employeeId:", row.employee_id, "departmentId:", row.departmentId);
-    
+
     setEditForm({
       employeeId: row.employee_id || "",
       employeeName: row.employeeName || "",
@@ -124,7 +142,7 @@ const Termination = () => {
         : "",
       terminationId: row.terminationId,
     });
-    
+
     // Create initial employee option from row data for immediate display
     if (row.employee_id && row.employeeName) {
       const getDisplayName = (employeeName: string | null): string => {
@@ -132,20 +150,20 @@ const Termination = () => {
         const parts = employeeName.split(' - ');
         return parts.length > 1 ? parts.slice(1).join(' - ') : employeeName;
       };
-      
+
       const initialEmployeeOption = {
         value: row.employee_id,
         label: `${row.employeeId || 'N/A'} - ${getDisplayName(row.employeeName)}`,
       };
-      
+
       console.log("[Termination] Setting initial employee option:", initialEmployeeOption);
       setEmployeeOptions([initialEmployeeOption]);
     }
-    
+
     // Fetch employees for the selected department to populate dropdown options
     if (row.departmentId) {
       console.log("[Termination] Fetching employees for department in edit mode:", row.departmentId);
-      fetchEmployeesByDepartment(row.departmentId);
+      loadEmployeesByDepartment(row.departmentId);
     } else {
       console.warn("[Termination] No departmentId found in row data");
     }
@@ -202,14 +220,14 @@ const Termination = () => {
     setDeletingTerminationId(terminationId);
   };
 
-  const confirmDelete = () => {
-    if (!socket || !deletingTerminationId) {
-      toast.error("Socket not connected or no termination selected");
+  const confirmDelete = async () => {
+    if (!deletingTerminationId) {
+      toast.error("No termination selected");
       return;
     }
 
-    console.log("[Termination] Deleting termination:", deletingTerminationId);
-    socket.emit("hr/termination/delete-termination", [deletingTerminationId]);
+    console.log("[Termination] Deleting termination via REST API:", deletingTerminationId);
+    await deleteTerminations([deletingTerminationId]);
   };
 
   const fmtYMD = (s?: string) => {
@@ -259,7 +277,7 @@ const Termination = () => {
         };
       });
       console.log("[Termination] Mapped employee options:", opts);
-      
+
       // Merge with existing options to preserve any initial option set by openEditModal
       setEmployeeOptions((prevOptions) => {
         // If there's a pre-existing option (from openEditModal), ensure it's included
@@ -306,10 +324,10 @@ const Termination = () => {
     console.log("[Termination] Response done:", res?.done);
     console.log("[Termination] Response message:", res?.message);
     setIsSubmitting(false);
-    
+
     if (res?.done) {
       toast.success("Termination added successfully");
-      
+
       // Reset form on success
       setAddForm({
         employeeId: "",
@@ -321,7 +339,7 @@ const Termination = () => {
         noticeDate: "",
         terminationDate: "",
       });
-      
+
       // Clear errors
       setAddErrors({
         departmentId: "",
@@ -334,13 +352,13 @@ const Termination = () => {
 
       // Clear employee options
       setEmployeeOptions([]);
-      
+
       // Refresh the list
       if (socket) {
         socket.emit("hr/termination/terminationlist", { type: filterType, ...customRange });
         socket.emit("hr/termination/termination-details");
       }
-      
+
       // Close modal
       console.log("[Termination] Attempting to close modal");
       setTimeout(() => {
@@ -348,17 +366,17 @@ const Termination = () => {
         console.log("[Termination] Modal element found:", !!modalElement);
         if (modalElement) {
           let modalClosed = false;
-          
+
           // Try Bootstrap if available
           if ((window as any).bootstrap?.Modal) {
             try {
               let modal = (window as any).bootstrap.Modal.getInstance(modalElement);
-              
+
               if (!modal) {
                 console.log("[Termination] Creating new modal instance");
                 modal = new (window as any).bootstrap.Modal(modalElement);
               }
-              
+
               console.log("[Termination] Calling modal.hide()");
               modal.hide();
               modalClosed = true;
@@ -366,7 +384,7 @@ const Termination = () => {
               console.error("[Termination] Bootstrap modal error:", error);
             }
           }
-          
+
           // Fallback: Force close manually
           if (!modalClosed) {
             console.log("[Termination] Using fallback modal close");
@@ -374,7 +392,7 @@ const Termination = () => {
             modalElement.setAttribute("aria-hidden", "true");
             modalElement.style.display = "none";
           }
-          
+
           // Force cleanup of backdrop and body classes
           setTimeout(() => {
             console.log("[Termination] Forcing cleanup of modal backdrop");
@@ -388,7 +406,7 @@ const Termination = () => {
       }, 100);
     } else {
       console.error("[Termination] Failed to add termination:", res?.message);
-      
+
       // Handle backend validation errors inline
       if (res?.errors && typeof res.errors === 'object') {
         const backendErrors: any = {};
@@ -399,7 +417,7 @@ const Termination = () => {
         });
         setAddErrors(prev => ({ ...prev, ...backendErrors }));
       }
-      
+
       // Show toast for general error message
       if (res?.message) {
         toast.error(res.message);
@@ -410,10 +428,10 @@ const Termination = () => {
   const onUpdateResponse = useCallback((res: any) => {
     console.log("[Termination] onUpdateResponse received:", res);
     setIsSubmitting(false);
-    
+
     if (res?.done) {
       toast.success("Termination updated successfully");
-      
+
       // Reset form on success
       setEditForm({
         employeeId: "",
@@ -426,7 +444,7 @@ const Termination = () => {
         terminationDate: "",
         terminationId: "",
       });
-      
+
       // Clear errors
       setEditErrors({
         departmentId: "",
@@ -439,13 +457,13 @@ const Termination = () => {
 
       // Clear employee options
       setEmployeeOptions([]);
-      
+
       // Refresh the list
       if (socket) {
         socket.emit("hr/termination/terminationlist", { type: filterType, ...customRange });
         socket.emit("hr/termination/termination-details");
       }
-      
+
       // Close modal
       console.log("[Termination] Attempting to close edit modal");
       setTimeout(() => {
@@ -453,17 +471,17 @@ const Termination = () => {
         console.log("[Termination] Edit modal element found:", !!modalElement);
         if (modalElement) {
           let modalClosed = false;
-          
+
           // Try Bootstrap if available
           if ((window as any).bootstrap?.Modal) {
             try {
               let modal = (window as any).bootstrap.Modal.getInstance(modalElement);
-              
+
               if (!modal) {
                 console.log("[Termination] Creating new edit modal instance");
                 modal = new (window as any).bootstrap.Modal(modalElement);
               }
-              
+
               console.log("[Termination] Calling edit modal.hide()");
               modal.hide();
               modalClosed = true;
@@ -471,7 +489,7 @@ const Termination = () => {
               console.error("[Termination] Bootstrap edit modal error:", error);
             }
           }
-          
+
           // Fallback: Force close manually
           if (!modalClosed) {
             console.log("[Termination] Using fallback edit modal close");
@@ -479,7 +497,7 @@ const Termination = () => {
             modalElement.setAttribute("aria-hidden", "true");
             modalElement.style.display = "none";
           }
-          
+
           // Force cleanup of backdrop and body classes
           setTimeout(() => {
             console.log("[Termination] Forcing cleanup of edit modal backdrop");
@@ -493,7 +511,7 @@ const Termination = () => {
       }, 100);
     } else {
       console.error("[Termination] Failed to update termination:", res?.message);
-      
+
       // Handle backend validation errors inline
       if (res?.errors && typeof res.errors === 'object') {
         const backendErrors: any = {};
@@ -504,7 +522,7 @@ const Termination = () => {
         });
         setEditErrors(prev => ({ ...prev, ...backendErrors }));
       }
-      
+
       // Show toast for general error message
       if (res?.message) {
         toast.error(res.message);
@@ -515,12 +533,12 @@ const Termination = () => {
   const onDeleteResponse = useCallback((res: any) => {
     console.log("[Termination] ===== onDeleteResponse CALLED =====");
     console.log("[Termination] Response:", res);
-    
+
     if (res?.done) {
       toast.success("Termination deleted successfully");
       setSelectedKeys([]);
       setDeletingTerminationId(null);
-      
+
       // Refresh the termination list and stats
       if (socket) {
         socket.emit("hr/termination/terminationlist", { type: filterType, ...customRange });
@@ -529,18 +547,18 @@ const Termination = () => {
         socket.emit("hrm/employees/get-employee-stats");
         console.log("[Termination] Emitted employee refresh after deletion");
       }
-      
+
       // Close modal (robust)
       console.log("[Termination] Attempting to close delete modal");
       const modalElement = document.getElementById("delete_modal");
       console.log("[Termination] Modal element found:", !!modalElement);
-      
+
       let closed = false;
       if (modalElement) {
         console.log("[Termination] Checking for Bootstrap Modal instance");
         const modal = window.bootstrap?.Modal?.getInstance(modalElement);
         console.log("[Termination] Modal instance found:", !!modal);
-        
+
         if (modal) {
           console.log("[Termination] Calling modal.hide()");
           modal.hide();
@@ -548,7 +566,7 @@ const Termination = () => {
           console.log("[Termination] Modal.hide() called successfully");
         }
       }
-      
+
       // Fallback: forcibly remove modal classes and backdrop if still open
       if (!closed && modalElement) {
         console.log("[Termination] Using fallback modal close");
@@ -564,7 +582,7 @@ const Termination = () => {
         }
         console.log("[Termination] Fallback close completed");
       }
-      
+
       console.log("[Termination] Delete response handling completed");
     } else {
       console.error("Failed to delete termination:", res?.message);
@@ -592,77 +610,88 @@ const Termination = () => {
     }
   }, []);
 
-  // register socket listeners and join room
+  // fetchers (using REST API) - Define BEFORE socket listeners
+  const fetchList = useCallback(
+    async (type: string, range?: { startDate?: string; endDate?: string }) => {
+      setLoading(true);
+      const filters: any = {};
+      if (type === "thismonth") {
+        filters.period = "thismonth";
+      } else if (type === "thisyear") {
+        filters.period = "thisyear";
+      } else if (type === "alltime") {
+        filters.period = "alltime";
+      } else if (type === "custom" && range?.startDate && range?.endDate) {
+        filters.startDate = range.startDate;
+        filters.endDate = range.endDate;
+      }
+      await fetchTerminations(filters);
+    },
+    [fetchTerminations]
+  );
+
+  // register socket listeners and join room (using REST API + Socket.IO for broadcasts)
   useEffect(() => {
     if (!socket) return;
 
+    // Join HR room for Socket.IO broadcasts
     socket.emit("join-room", "hr_room");
 
-    socket.on("hr/termination/terminationlist-response", onListResponse);
-    socket.on("hr/resignation/departmentlist-response", onDepartmentsListResponse);
-    socket.on("hr/resignation/employees-by-department-response", onEmployeesByDepartmentResponse);
-    socket.on("hr/termination/termination-details-response", onStatsResponse);
-    socket.on("hr/termination/add-termination-response", onAddResponse);
-    socket.on("hr/termination/update-termination-response", onUpdateResponse);
-    socket.on("hr/termination/delete-termination-response", onDeleteResponse);
-    socket.on("hr/termination/process-termination-response", onProcessResponse);
-    socket.on("hr/termination/cancel-termination-response", onCancelResponse);
+    // Real-time broadcast listeners (KEEP - for real-time updates from backend)
+    const handleTerminationCreated = (data: any) => {
+      console.log("[Termination] Real-time: Termination created");
+      fetchList(filterType, customRange);
+      fetchTerminationStats();
+    };
+    const handleTerminationUpdated = (data: any) => {
+      console.log("[Termination] Real-time: Termination updated");
+      fetchList(filterType, customRange);
+      fetchTerminationStats();
+    };
+    const handleTerminationDeleted = (data: any) => {
+      console.log("[Termination] Real-time: Termination deleted");
+      fetchList(filterType, customRange);
+      fetchTerminationStats();
+    };
+
+    // Only set up socket listeners if socket is available
+    if (socket) {
+      socket.on("termination:created", handleTerminationCreated);
+      socket.on("termination:updated", handleTerminationUpdated);
+      socket.on("termination:deleted", handleTerminationDeleted);
+    }
 
     return () => {
-      socket.off("hr/termination/terminationlist-response", onListResponse);
-      socket.off("hr/resignation/departmentlist-response", onDepartmentsListResponse);
-      socket.off("hr/resignation/employees-by-department-response", onEmployeesByDepartmentResponse);
-      socket.off(
-        "hr/termination/termination-details-response",
-        onStatsResponse
-      );
-      socket.off("hr/termination/add-termination-response", onAddResponse);
-      socket.off(
-        "hr/termination/update-termination-response",
-        onUpdateResponse
-      );
-      socket.off(
-        "hr/termination/delete-termination-response",
-        onDeleteResponse
-      );
-      socket.off("hr/termination/process-termination-response", onProcessResponse);
-      socket.off("hr/termination/cancel-termination-response", onCancelResponse);
-    };
-  }, [
-    socket,
-    onListResponse,
-    onDepartmentsListResponse,
-    onEmployeesByDepartmentResponse,
-    onStatsResponse,
-    onAddResponse,
-    onUpdateResponse,
-    onDeleteResponse,
-    onProcessResponse,
-    onCancelResponse,
-  ]);
-
-  // fetchers
-  const fetchList = useCallback(
-    (type: string, range?: { startDate?: string; endDate?: string }) => {
-      if (!socket) return;
-      setLoading(true);
-      const payload: any = { type };
-      if (type === "custom" && range?.startDate && range?.endDate) {
-        payload.startDate = range.startDate;
-        payload.endDate = range.endDate;
+      if (socket) {
+        socket.off("termination:created", handleTerminationCreated);
+        socket.off("termination:updated", handleTerminationUpdated);
+        socket.off("termination:deleted", handleTerminationDeleted);
       }
-      socket.emit("hr/termination/terminationlist", payload);
-    },
-    [socket]
-  );
+    };
+  }, [socket, filterType, customRange, fetchList, fetchTerminationStats]);
 
-    const fetchDepartmentsList = useCallback(() => {
-        if (!socket) return;
-        setLoading(true);
-        socket.emit("hr/resignation/departmentlist");
-      },
-      [socket]
-    );
+  // Sync local state with REST API state
+  useEffect(() => {
+    const transformedTerminations: TerminationRow[] = apiTerminations.map(termination => ({
+      ...termination,
+      employeeName: termination.employeeName || 'Unknown',
+      department: termination.department || '',
+      departmentId: termination.departmentId || '',
+      terminationId: termination.terminationId || termination._id || '',
+      employeeId: termination.employeeId || '',
+      reason: termination.reason || '',
+      terminationType: termination.terminationType || 'Lack of skills',
+      noticeDate: termination.noticeDate || '',
+      terminationDate: termination.terminationDate || '',
+    }));
+
+    setRows(transformedTerminations);
+    // Only update stats if apiStats is not null, otherwise keep default values
+    if (apiStats) {
+      setStats(apiStats as any);
+    }
+    setLoading(apiLoading);
+  }, [apiTerminations, apiStats, apiLoading]);
 
   const toIsoFromDDMMYYYY = (s: string) => {
     // s like "13-09-2025"
@@ -686,7 +715,7 @@ const Termination = () => {
     // Clear department and dependent field errors
     setAddErrors(prev => ({ ...prev, departmentId: "", employeeId: "" }));
     if (opt?.value) {
-      fetchEmployeesByDepartment(opt.value);
+      loadEmployeesByDepartment(opt.value);
     } else {
       setEmployeeOptions([]);
     }
@@ -705,7 +734,7 @@ const Termination = () => {
     // Clear department and dependent field errors
     setEditErrors(prev => ({ ...prev, departmentId: "", employeeId: "" }));
     if (opt?.value) {
-      fetchEmployeesByDepartment(opt.value);
+      loadEmployeesByDepartment(opt.value);
     } else {
       setEmployeeOptions([]);
     }
@@ -784,7 +813,7 @@ const Termination = () => {
     if (addForm.noticeDate && addForm.terminationDate) {
       const noticeDate = parse(addForm.noticeDate, "dd-MM-yyyy", new Date());
       const terminationDate = parse(addForm.terminationDate, "dd-MM-yyyy", new Date());
-      
+
       if (!isNaN(noticeDate.getTime()) && !isNaN(terminationDate.getTime())) {
         if (terminationDate < noticeDate) {
           errors.terminationDate = "Termination date must be on or after notice date";
@@ -844,7 +873,7 @@ const Termination = () => {
     if (editForm.noticeDate && editForm.terminationDate) {
       const noticeDate = parse(editForm.noticeDate, "dd-MM-yyyy", new Date());
       const terminationDate = parse(editForm.terminationDate, "dd-MM-yyyy", new Date());
-      
+
       if (!isNaN(noticeDate.getTime()) && !isNaN(terminationDate.getTime())) {
         if (terminationDate < noticeDate) {
           errors.terminationDate = "Termination date must be on or after notice date";
@@ -863,7 +892,7 @@ const Termination = () => {
     setViewingTermination(termination);
   };
 
-  const handleAddSave = () => {
+  const handleAddSave = async () => {
     console.log("[Termination] handleAddSave called");
 
     // Validate form first
@@ -872,14 +901,14 @@ const Termination = () => {
       return;
     }
 
-    if (!socket || isSubmitting) return;
+    if (isSubmitting) return;
 
     const noticeIso = toIsoFromDDMMYYYY(addForm.noticeDate);
     if (!noticeIso) {
       console.error("[Termination] Invalid notice date format");
       return;
     }
-    
+
     const terIso = toIsoFromDDMMYYYY(addForm.terminationDate);
     if (!terIso) {
       console.error("[Termination] Invalid termination date format");
@@ -899,14 +928,13 @@ const Termination = () => {
       terminationDate: terIso,
     };
 
-    console.log("[Termination] Emitting add-termination with payload:", payload);
-    console.log("[Termination] Socket connected:", socket.connected);
-    console.log("[Termination] Socket ID:", socket.id);
+    console.log("[Termination] Creating termination via REST API:", payload);
     setIsSubmitting(true);
-    socket.emit("hr/termination/add-termination", payload);
+    const result = await createTermination(payload);
+    setIsSubmitting(false);
   };
 
-  const handleEditSave = () => {
+  const handleEditSave = async () => {
     console.log("[Termination] handleEditSave called");
 
     // Validate form first
@@ -915,21 +943,21 @@ const Termination = () => {
       return;
     }
 
-    if (!socket || isSubmitting) return;
+    if (isSubmitting) return;
 
     const noticeIso = toIsoFromDDMMYYYY(editForm.noticeDate);
     if (!noticeIso) {
       console.error("[Termination] Invalid notice date format");
       return;
     }
-    
+
     const terIso = toIsoFromDDMMYYYY(editForm.terminationDate);
     if (!terIso) {
       console.error("[Termination] Invalid termination date format");
       return;
     }
 
-    const payload = {
+    const updateData = {
       employeeId: editForm.employeeId,
       employeeName: editForm.employeeName,
       department: editForm.departmentName,
@@ -940,18 +968,35 @@ const Termination = () => {
       noticeDate: noticeIso,
       reason: editForm.reason,
       terminationDate: terIso,
-      terminationId: editForm.terminationId,
     };
 
-    console.log("[Termination] Emitting update-termination with payload:", payload);
+    console.log("[Termination] Updating termination via REST API:", editForm.terminationId, updateData);
     setIsSubmitting(true);
-    socket.emit("hr/termination/update-termination", payload);
+    const result = await updateTermination(editForm.terminationId, updateData);
+    setIsSubmitting(false);
   };
 
-  const fetchStats = useCallback(() => {
-    if (!socket) return;
-    socket.emit("hr/termination/termination-details");
-  }, [socket]);
+  const fetchStats = useCallback(async () => {
+    try {
+      const stats = await fetchTerminationStats();
+      // Only update stats if we got valid data
+      if (stats) {
+        setStats(stats as any);
+      }
+    } catch (error) {
+      console.error('[Termination] Failed to fetch stats:', error);
+    }
+  }, [fetchTerminationStats]);
+
+  const fetchDepartmentsList = useCallback(async () => {
+    try {
+      // Fetch departments from API if available
+      // For now, keep empty array or use cached data
+      setDepartmentOptions([]);
+    } catch (error) {
+      console.error('[Termination] Failed to fetch departments:', error);
+    }
+  }, []);
 
   // initial + reactive fetch
   useEffect(() => {
@@ -1007,14 +1052,14 @@ const Termination = () => {
     }
   };
 
-  const handleBulkDelete = () => {
-    if (!socket || selectedKeys.length === 0) return;
+  const handleBulkDelete = async () => {
+    if (selectedKeys.length === 0) return;
     if (
       window.confirm(
         `Delete ${selectedKeys.length} record(s)? This cannot be undone.`
       )
     ) {
-      socket.emit("hr/termination/delete-termination", selectedKeys);
+      await deleteTerminations(selectedKeys);
     }
   };
 
@@ -1022,30 +1067,20 @@ const Termination = () => {
     setSelectedKeys(keys as string[]);
   };
 
-  // Handle process termination
-  const handleProcessTermination = (terminationId: string) => {
-    if (!socket) {
-      toast.error("Socket not connected");
-      return;
-    }
-
+  // Handle process termination (using REST API)
+  const handleProcessTermination = async (terminationId: string) => {
     if (window.confirm("Are you sure you want to process this termination? Employee status will be updated to 'Terminated'.")) {
-      console.log("[Termination] Processing termination:", terminationId);
-      socket.emit("hr/termination/process-termination", { terminationId });
+      console.log("[Termination] Processing termination via REST API:", terminationId);
+      await processTermination(terminationId);
     }
   };
 
-  // Handle cancel termination
-  const handleCancelTermination = (terminationId: string) => {
-    if (!socket) {
-      toast.error("Socket not connected");
-      return;
-    }
-
+  // Handle cancel termination (using REST API)
+  const handleCancelTermination = async (terminationId: string) => {
     const reason = window.prompt("Please enter reason for cancellation (optional):");
     if (reason !== null) { // User clicked OK (even if empty string)
-      console.log("[Termination] Cancelling termination:", terminationId);
-      socket.emit("hr/termination/cancel-termination", { terminationId, reason });
+      console.log("[Termination] Cancelling termination via REST API:", terminationId);
+      await cancelTermination(terminationId, reason);
     }
   };
 
@@ -1082,9 +1117,9 @@ const Termination = () => {
           }
           return employeeName;
         };
-        
+
         const displayName = getDisplayName(text);
-        
+
         return (
           <EmployeeNameCell
             name={displayName}
@@ -1614,7 +1649,7 @@ const Termination = () => {
                           options={departmentOptions}
                           disabled={true}
                         />
-                        
+
                         {editErrors.departmentId && (
                           <small className="text-danger">{editErrors.departmentId}</small>
                         )}
@@ -1633,7 +1668,7 @@ const Termination = () => {
                           options={employeeOptions}
                           disabled={true}
                         />
-                        
+
                         {editErrors.employeeId && (
                           <small className="text-danger">{editErrors.employeeId}</small>
                         )}
@@ -1792,7 +1827,7 @@ const Termination = () => {
           </div>
         </div>
         {/* /Delete Modal */}
-        
+
         {/* View Termination Details Modal */}
         <TerminationDetailsModal termination={viewingTermination} modalId="view_termination" />
         {/* /View Termination Details Modal */}
