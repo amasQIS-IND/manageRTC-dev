@@ -14,6 +14,9 @@ import { useModalCleanup } from "../../core/hooks/useModalCleanup";
 import dayjs, { Dayjs } from "dayjs";
 import { Socket } from "socket.io-client";
 import PromotionDetailsModal from "../../core/modals/PromotionDetailsModal";
+// REST API Hooks for Promotions and Employees
+import { usePromotionsREST } from "../../hooks/usePromotionsREST";
+import { useEmployeesREST } from "../../hooks/useEmployeesREST";
 
 interface Employee {
   id: string;
@@ -84,7 +87,28 @@ const Promotion = () => {
   const socket = useSocket() as Socket | null;
   const { cleanupModals } = useModalCleanup();
 
-  // State management
+  // REST API Hook - provides data and CRUD operations
+  const {
+    promotions: apiPromotions,
+    stats: apiStats,
+    departments: apiDepartments,
+    designations: apiDesignations,
+    loading: apiLoading,
+    fetchPromotions,
+    fetchStats,
+    fetchDepartments,
+    fetchDesignations,
+    createPromotion,
+    updatePromotion,
+    deletePromotion,
+    applyPromotion,
+    cancelPromotion,
+  } = usePromotionsREST();
+
+  // REST API Hook for Employees (for fetching employees by department)
+  const { fetchEmployees: fetchEmployeesByDept } = useEmployeesREST();
+
+  // State management (keeping local state for UI-specific needs)
   const [promotions, setPromotions] = useState<Promotion[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -154,7 +178,7 @@ const Promotion = () => {
    */
   const closeModalReliably = (modalId: string) => {
     console.log("[Promotion] closeModalReliably called for:", modalId);
-    
+
     try {
       // Method 1: Try Bootstrap Modal API if available via window.bootstrap
       const modalElement = document.getElementById(modalId);
@@ -195,13 +219,13 @@ const Promotion = () => {
         modalElement.setAttribute('aria-hidden', 'true');
         modalElement.removeAttribute('aria-modal');
         modalElement.removeAttribute('role');
-        
+
         // Remove backdrop
         const backdrop = document.querySelector('.modal-backdrop');
         if (backdrop) {
           backdrop.remove();
         }
-        
+
         // Remove modal-open class from body
         document.body.classList.remove('modal-open');
         document.body.style.overflow = '';
@@ -233,170 +257,109 @@ const Promotion = () => {
     }
   }, [promotions]);
 
-  // Fetch initial data
+  // Fetch initial data using REST API
   useEffect(() => {
-    if (!socket) {
-      console.log("[Promotion] Socket not available yet");
-      return;
-    }
+    console.log("[Promotion] Fetching initial data via REST API...");
 
-    console.log("[Promotion] Socket connected, fetching initial data...");
-    console.log("[Promotion] Socket ID:", socket?.id);
-    console.log("[Promotion] Socket connected:", socket?.connected);
+    // Fetch data via REST API
+    const fetchInitialData = async () => {
+      // Fetch promotions, departments, designations, and stats in parallel
+      await Promise.all([
+        (async () => {
+          await fetchPromotions();
+        })(),
+        (async () => {
+          await fetchDepartments();
+        })(),
+        (async () => {
+          await fetchDesignations();
+        })(),
+        (async () => {
+          await fetchStats();
+        })(),
+      ]);
 
-    // Fetch promotions
-    socket.emit("promotion:getAll", {});
-    console.log("[Promotion] Emitted promotion:getAll");
-
-    // Fetch departments for dropdown
-    socket.emit("promotion:getDepartments");
-    console.log("[Promotion] Emitted promotion:getDepartments");
-
-    // Fetch designations for dropdown
-    socket.emit("promotion:getDesignations");
-    console.log("[Promotion] Emitted promotion:getDesignations");
-
-    // Fetch promotion stats
-    socket.emit("promotion:getStats");
-    console.log("[Promotion] Emitted promotion:getStats");
-
-    // Setup socket listeners
-    const handleGetAllResponse = (response: any) => {
-      console.log("[Promotion] Received promotions response:", response);
-      console.log("[Promotion] Response type:", typeof response, "done:", response?.done);
-      if (response.done && response.data) {
-        console.log("[Promotion] Setting promotions, count:", response.data.length);
-        setPromotions(response.data);
-        // Track promoted employee IDs
-        const promotedIds = new Set<string>(response.data.map((p: Promotion) => p.employee.id));
-        setPromotedEmployeeIds(promotedIds);
-      } else {
-        const errorMsg = response.error || "Failed to fetch promotions";
-        console.error("[Promotion] Error fetching promotions:", errorMsg);
-        toast.error(errorMsg);
-      }
       setLoading(false);
     };
 
-    const handleGetDepartmentsResponse = (response: any) => {
-      console.log("[Promotion] Received departments response:", response);
-      console.log("[Promotion] Response type:", typeof response, "done:", response?.done);
-      if (response.done && response.data) {
-        console.log("[Promotion] Setting departments, count:", response.data.length);
-        setDepartments(response.data);
-      } else {
-        const errorMsg = response.error || "Failed to fetch departments";
-        console.error("[Promotion] Error fetching departments:", errorMsg);
-        toast.error(errorMsg);
-      }
-    };
+    fetchInitialData();
 
-    const handleGetEmployeesByDepartmentResponse = (response: any) => {
-      console.log("[Promotion] Received employees-by-department response:", response);
-      console.log("[Promotion] Response type:", typeof response, "done:", response?.done);
-      if (response.done && response.data) {
-        console.log("[Promotion] Setting employees, count:", response.data.length);
-        setEmployees(response.data);
-      } else {
-        const errorMsg = response.error || response.message || "Failed to fetch employees";
-        console.error("[Promotion] Error fetching employees:", errorMsg);
-        setEmployees([]);
-      }
-    };
-
-    const handleGetDesignationsResponse = (response: any) => {
-      console.log("[Promotion] Received designations response:", response);
-      console.log("[Promotion] Response type:", typeof response, "done:", response?.done);
-      if (response.done && response.data) {
-        console.log("[Promotion] Setting designations, count:", response.data.length);
-        setDesignations(response.data);
-      } else {
-        const errorMsg = response.error || "Failed to fetch designations";
-        console.error("[Promotion] Error fetching designations:", errorMsg);
-        toast.error(errorMsg);
-      }
-    };
-
-    const handleGetDesignationsByDepartmentResponse = (response: any) => {
-      console.log("[Promotion] ===== RECEIVED promotion:getDesignationsByDepartment:response:", response);
-      console.log("[Promotion] Response type:", typeof response, "done:", response?.done);
-      if (response.done && response.data) {
-        console.log("[Promotion] ✓ SUCCESS - Setting designations, count:", response.data.length);
-        console.log("[Promotion] Designations data:", response.data.map((d: any) => ({ id: d.id, name: d.name, departmentId: d.departmentId })));
-        setDesignations(response.data);
-      } else {
-        const errorMsg = response.error || response.message || "Failed to fetch designations";
-        console.error("[Promotion] ✗ ERROR fetching designations:", errorMsg);
-        setDesignations([]);
-        toast.error(errorMsg);
-      }
-    };
+    // Setup Socket.IO listeners for real-time broadcasts (REST API for CRUD + Socket.IO for real-time)
+    // Setup Socket.IO listeners for real-time broadcasts only
+    // REST API handles data fetching, Socket.IO handles real-time updates
 
     const handlePromotionCreated = (promotion: Promotion) => {
-      console.log("[Promotion] Promotion created:", promotion);
-      setPromotions((prev) => [promotion, ...prev]);
-      // Add to promoted employee IDs
-      setPromotedEmployeeIds((prev) => new Set(prev).add(promotion.employee.id));
+      console.log("[Promotion] Real-time: Promotion created:", promotion);
+      // Refetch from REST to ensure consistency
+      fetchPromotions();
       toast.success("Promotion added successfully");
     };
 
     const handlePromotionUpdated = (promotion: Promotion) => {
-      console.log("[Promotion] Promotion updated:", promotion);
-      setPromotions((prev) =>
-        prev.map((p) => (p._id === promotion._id ? promotion : p))
-      );
+      console.log("[Promotion] Real-time: Promotion updated:", promotion);
+      // Refetch from REST to ensure consistency
+      fetchPromotions();
       toast.success("Promotion updated successfully");
     };
 
     const handlePromotionDeleted = (data: { promotionId: string }) => {
-      console.log("[Promotion] Promotion deleted:", data);
-      // Find the promotion being deleted to get employeeId
-      const deletedPromotion = promotions.find(p => p._id === data.promotionId);
-      setPromotions((prev) => prev.filter((p) => p._id !== data.promotionId));
-      // Remove from promoted employee IDs
-      if (deletedPromotion) {
-        setPromotedEmployeeIds((prev) => {
-          const newSet = new Set(prev);
-          newSet.delete(deletedPromotion.employee.id);
-          return newSet;
-        });
-      }
+      console.log("[Promotion] Real-time: Promotion deleted:", data);
+      // Refetch from REST to ensure consistency
+      fetchPromotions();
       toast.success("Promotion deleted successfully");
     };
 
-    const handleGetStatsResponse = (response: any) => {
-      console.log("[Promotion] Received stats response:", response);
-      if (response.done && response.data) {
-        setStats(response.data);
-      } else {
-        console.error("[Promotion] Error fetching stats:", response.error);
-      }
-    };
-
-    socket.on("promotion:getAll:response", handleGetAllResponse);
-    socket.on("promotion:getDepartments:response", handleGetDepartmentsResponse);
-    socket.on("promotion:getEmployeesByDepartment:response", handleGetEmployeesByDepartmentResponse);
-    socket.on("promotion:getDesignations:response", handleGetDesignationsResponse);
-    socket.on("promotion:getDesignationsByDepartment:response", handleGetDesignationsByDepartmentResponse);
-    socket.on("promotion:getStats:response", handleGetStatsResponse);
-    socket.on("promotion:created", handlePromotionCreated);
-    socket.on("promotion:updated", handlePromotionUpdated);
-    socket.on("promotion:deleted", handlePromotionDeleted);
+    // Only set up socket listeners if socket is available
+    if (socket) {
+      socket.on("promotion:created", handlePromotionCreated);
+      socket.on("promotion:updated", handlePromotionUpdated);
+      socket.on("promotion:deleted", handlePromotionDeleted);
+    }
 
     // Cleanup listeners on unmount
     return () => {
-      socket.off("promotion:getAll:response", handleGetAllResponse);
-      socket.off("promotion:getDepartments:response", handleGetDepartmentsResponse);
-      socket.off("promotion:getEmployeesByDepartment:response", handleGetEmployeesByDepartmentResponse);
-      socket.off("promotion:getDesignations:response", handleGetDesignationsResponse);
-      socket.off("promotion:getDesignationsByDepartment:response", handleGetDesignationsByDepartmentResponse);
-      socket.off("promotion:getStats:response", handleGetStatsResponse);
-      socket.off("promotion:created", handlePromotionCreated);
-      socket.off("promotion:updated", handlePromotionUpdated);
-      socket.off("promotion:deleted", handlePromotionDeleted);
+      if (socket) {
+        socket.off("promotion:created", handlePromotionCreated);
+        socket.off("promotion:updated", handlePromotionUpdated);
+        socket.off("promotion:deleted", handlePromotionDeleted);
+      }
       cleanupModals();
     };
-  }, [socket, cleanupModals, promotions]);
+  }, [socket, cleanupModals, fetchPromotions, fetchDepartments, fetchDesignations, fetchStats]);
+
+  // Sync REST API data to local state
+  useEffect(() => {
+    const transformedPromotions = (apiPromotions || []).map(promo => ({
+      ...promo,
+      employee: promo.employeeId ? {
+        id: promo.employeeId,
+        name: promo.employeeName || 'Unknown',
+        image: '',
+        employeeId: promo.employeeId,
+      } : { id: '', name: 'Unknown', image: '', employeeId: '' },
+    }));
+
+    setPromotions(transformedPromotions as any);
+    setDepartments(apiDepartments || []);
+
+    const transformedDesignations = (apiDesignations || []).map(designation => ({
+      id: designation._id,
+      name: designation.designation,
+      _id: designation._id,
+      designation: designation.designation,
+    }));
+    setDesignations(transformedDesignations as any);
+
+    if (apiStats) {
+      setStats({
+        total: apiStats.total || 0,
+        pending: apiStats.pending || 0,
+        approved: apiStats.approved || 0,
+        effectiveThisMonth: apiStats.due || 0,
+      });
+    }
+    setLoading(apiLoading);
+  }, [apiPromotions, apiDepartments, apiDesignations, apiStats, apiLoading]);
 
   // Calculate stats when promotion data changes
   useEffect(() => {
@@ -410,10 +373,10 @@ const Promotion = () => {
 
     const handleAddModalOpen = () => {
       console.log("[Promotion] Add modal opened - clearing errors and resetting form");
-      
+
       // Clear employees list to force fresh fetch
       setEmployees([]);
-      
+
       // Clear errors
       setAddErrors({
         sourceDepartmentId: "",
@@ -423,7 +386,7 @@ const Promotion = () => {
         promotionDate: "",
         promotionType: "",
       });
-      
+
       // Reset form to ensure clean state
       setNewPromotion({
         sourceDepartmentId: "",
@@ -433,7 +396,7 @@ const Promotion = () => {
         promotionDate: null,
         promotionType: "Regular",
       });
-      
+
       // Clear designations
       setDesignations([]);
     };
@@ -460,27 +423,42 @@ const Promotion = () => {
     };
   }, []);
 
-  // Fetch employees by department
-  const fetchEmployeesByDepartment = React.useCallback((departmentId: string) => {
-    if (!socket || !departmentId) {
-      console.log("[Promotion] fetchEmployeesByDepartment - socket or departmentId missing", { socket: !!socket, departmentId });
+  // Fetch employees by department (using REST API)
+  const fetchEmployeesByDepartment = React.useCallback(async (departmentId: string) => {
+    if (!departmentId) {
+      console.log("[Promotion] fetchEmployeesByDepartment - departmentId missing", { departmentId });
       setEmployees([]);
       return;
     }
-    console.log("[Promotion] Fetching employees for department:", departmentId, "type:", typeof departmentId);
-    socket.emit("promotion:getEmployeesByDepartment", departmentId);
-  }, [socket]);
+    console.log("[Promotion] Fetching employees for department via REST API:", departmentId, "type:", typeof departmentId);
+    try {
+      // Use the employees REST hook to fetch employees by department
+      await fetchEmployeesByDept({ departmentId });
+      // Note: The employees state will be updated by the socket listener for real-time updates
+      // or we can use the returned data from the hook directly if needed
+    } catch (error) {
+      console.error("[Promotion] Error fetching employees by department:", error);
+      setEmployees([]);
+    }
+  }, [fetchEmployeesByDept]);
 
-  // Fetch designations by department
-  const fetchDesignationsByDepartment = React.useCallback((departmentId: string) => {
-    if (!socket || !departmentId) {
-      console.log("[Promotion] fetchDesignationsByDepartment - socket or departmentId missing", { socket: !!socket, departmentId });
+  // Fetch designations by department (using REST API)
+  const fetchDesignationsByDepartment = React.useCallback(async (departmentId: string) => {
+    if (!departmentId) {
+      console.log("[Promotion] fetchDesignationsByDepartment - departmentId missing", { departmentId });
       setDesignations([]);
       return;
     }
-    console.log("[Promotion] ===== EMITTING promotion:getDesignationsByDepartment with departmentId:", departmentId, "type:", typeof departmentId);
-    socket.emit("promotion:getDesignationsByDepartment", departmentId);
-  }, [socket]);
+    console.log("[Promotion] Fetching designations for department via REST API:", departmentId, "type:", typeof departmentId);
+    try {
+      // Use the promotions REST hook to fetch designations by department
+      await fetchDesignations(departmentId);
+      // Note: The designations state will be populated by the hook
+    } catch (error) {
+      console.error("[Promotion] Error fetching designations by department:", error);
+      setDesignations([]);
+    }
+  }, [fetchDesignations]);
 
   // Handle department change in Add form
   const handleAddDepartmentChange = (option: any) => {
@@ -508,20 +486,20 @@ const Promotion = () => {
   const handleAddEmployeeChange = (option: any) => {
     console.log("[Promotion] Add employee selected - id:", option?.value);
     const employee = employees.find(emp => emp.id === option?.value);
-    
+
     const newTargetDeptId = employee?.departmentId || "";
     console.log("[Promotion] Auto-populating target department:", newTargetDeptId);
-    
+
     setNewPromotion({
       ...newPromotion,
       employeeId: option?.value || "",
       targetDepartmentId: newTargetDeptId, // Auto-populate with employee's current department
       designationToId: "", // Reset designation when employee changes
     });
-    
+
     // Clear employee, department, and designation errors
     setAddErrors(prev => ({ ...prev, employeeId: "", targetDepartmentId: "", designationToId: "" }));
-    
+
     // Fetch designations for the auto-populated target department
     if (newTargetDeptId) {
       console.log("[Promotion] Fetching designations for auto-populated department:", newTargetDeptId);
@@ -687,17 +665,12 @@ const Promotion = () => {
     return isValid;
   };
 
-  // Handle add promotion
-  const handleAddPromotion = () => {
-    console.log("[Promotion] handleAddPromotion called", { newPromotion, socketConnected: !!socket });
+  // Handle add promotion via REST API
+  const handleAddPromotion = async () => {
+    console.log("[Promotion] handleAddPromotion called (REST API)", { newPromotion });
 
     // Validate form first
     if (!validateAddForm()) {
-      return;
-    }
-
-    if (!socket) {
-      toast.error("Socket not connected. Please refresh the page.");
       return;
     }
 
@@ -717,41 +690,33 @@ const Promotion = () => {
       return;
     }
 
-    // Send ONLY IDs to backend (normalized data model)
+    // Prepare data for REST API - map to the expected format
+    const selectedEmp = employees.find(e => e.id === newPromotion.employeeId);
     const promotionData = {
       employeeId: newPromotion.employeeId,
+      promotionFrom: {
+        departmentId: newPromotion.sourceDepartmentId || '',
+        designationId: selectedEmp?.designationId || '',
+      },
       promotionTo: {
         departmentId: newPromotion.targetDepartmentId,
         designationId: newPromotion.designationToId
       },
-      promotionDate: newPromotion.promotionDate.toISOString(),
-      promotionType: newPromotion.promotionType,
+      promotionDate: newPromotion.promotionDate ? dayjs(newPromotion.promotionDate).format('YYYY-MM-DD') : undefined,
+      promotionType: (newPromotion.promotionType || 'promotion') as 'promotion' | 'demotion' | 'transfer',
     };
 
-    console.log("[Promotion] Adding promotion with normalized data:", promotionData);
+    console.log("[Promotion] Adding promotion via REST API:", promotionData);
 
-    // Set up timeout for response
-    const timeoutId = setTimeout(() => {
-      toast.error("Request timeout. Please check your connection and try again.");
-    }, 10000);
+    try {
+      // Call REST API to create promotion
+      const result = await createPromotion(promotionData);
 
-    socket.emit("promotion:create", promotionData);
-
-    socket.once("promotion:create:response", (response: any) => {
-      clearTimeout(timeoutId);
-      console.log("[Promotion] Create response:", response);
-      if (response.done) {
-        // Success! Show toast first
-        toast.success("Promotion added successfully!");
-        
-        // Re-fetch promotions list to ensure fully resolved data
-        console.log("[Promotion] Re-fetching promotions after create");
-        socket.emit("promotion:getAll", {});
-        
+      if (result.success) {
         // Close modal with delay for animation
         setTimeout(() => {
           closeModalReliably("new_promotion");
-          
+
           // Reset form after modal closing animation
           setTimeout(() => {
             setNewPromotion({
@@ -775,31 +740,27 @@ const Promotion = () => {
           }, 300);
         }, 100);
       } else {
-        // Handle field-level errors from backend validation
-        const errorMessage = response.error || "Failed to add promotion";
-        
-        // Check if it's an employee lifecycle conflict
-        if (errorMessage.includes("promotion") || errorMessage.includes("resignation") || errorMessage.includes("termination")) {
-          setAddErrors(prev => ({ ...prev, employeeId: errorMessage }));
-        }
-        
+        // Handle errors from REST API
+        const errorMessage = result.error?.message || "Failed to add promotion";
         toast.error(errorMessage);
-        console.error("[Promotion] Create failed:", response);
       }
-    });
+    } catch (error: any) {
+      console.error("[Promotion] Error creating promotion:", error);
+      toast.error(error.message || "Failed to add promotion. Please try again.");
+    }
   };
 
   // Handle edit promotion
   const handleEditClick = (promotion: Promotion) => {
     console.log("[Promotion] Edit clicked:", promotion);
-    
+
     // Validate promotion structure before proceeding
     if (!promotion.promotionTo?.department?.id || !promotion.promotionTo?.designation?.id) {
       toast.error("Invalid promotion data. Please refresh the page and try again.");
       console.error("[Promotion] Invalid promotion structure:", promotion);
       return;
     }
-    
+
     setEditingPromotion(promotion);
     setEditForm({
       departmentId: promotion.promotionTo.department.id,
@@ -820,7 +781,7 @@ const Promotion = () => {
     }
   };
 
-  const handleUpdatePromotion = () => {
+  const handleUpdatePromotion = async () => {
     console.log("[Promotion] handleUpdatePromotion called", { editForm, editingPromotion });
 
     // Validate form first
@@ -828,8 +789,8 @@ const Promotion = () => {
       return;
     }
 
-    if (!socket || !editingPromotion) {
-      toast.error("Socket not connected or no promotion selected");
+    if (!editingPromotion) {
+      toast.error("No promotion selected");
       return;
     }
 
@@ -844,42 +805,30 @@ const Promotion = () => {
       return;
     }
 
-    // Send ONLY IDs to backend (normalized data model)
+    // Prepare data for REST API - map to the expected format
     const updateData = {
       promotionTo: {
         departmentId: editForm.departmentId,
         designationId: editForm.designationToId
       },
-      promotionDate: editForm.promotionDate.toISOString(),
-      promotionType: editForm.promotionType,
+      promotionDate: editForm.promotionDate ? dayjs(editForm.promotionDate).format('YYYY-MM-DD') : undefined,
+      promotionType: editForm.promotionType as 'promotion' | 'demotion' | 'transfer',
     };
 
-    console.log("[Promotion] Updating promotion with normalized data:", { promotionId: editingPromotion._id, update: updateData });
+    console.log("[Promotion] Updating promotion via REST API:", { promotionId: editingPromotion._id, update: updateData });
 
-    const timeoutId = setTimeout(() => {
-      toast.error("Update timeout. Please try again.");
-    }, 10000);
+    try {
+      // Call REST API to update promotion
+      const result = await updatePromotion(editingPromotion._id, updateData);
 
-    socket.emit("promotion:update", {
-      promotionId: editingPromotion._id,
-      update: updateData,
-    });
-
-    socket.once("promotion:update:response", (response: any) => {
-      clearTimeout(timeoutId);
-      console.log("[Promotion] Update response:", response);
-      if (response.done) {
+      if (result) {
         // Success! Show toast first
         toast.success("Promotion updated successfully!");
-        
-        // Re-fetch promotions list to ensure fully resolved data
-        console.log("[Promotion] Re-fetching promotions after update");
-        socket.emit("promotion:getAll", {});
-        
+
         // Close modal with delay for animation
         setTimeout(() => {
           closeModalReliably("edit_promotion");
-          
+
           // Reset form after modal closing animation
           setTimeout(() => {
             setEditingPromotion(null);
@@ -899,9 +848,10 @@ const Promotion = () => {
           }, 300);
         }, 100);
       } else {
-        const errorMsg = response.error || "Failed to update promotion";
-        console.error("[Promotion] Update failed:", response);
-        
+        // Handle errors from REST API
+        const errorMsg = "Failed to update promotion";
+        console.error("[Promotion] Update failed:", result);
+
         // Map backend errors to form fields for inline display
         const newErrors = {
           departmentId: "",
@@ -909,7 +859,7 @@ const Promotion = () => {
           promotionDate: "",
           promotionType: "",
         };
-        
+
         // Check error message and set appropriate field error
         const errorLower = errorMsg.toLowerCase();
         if (errorLower.includes("designation") && errorLower.includes("different")) {
@@ -926,13 +876,16 @@ const Promotion = () => {
           // Generic error - show as toast only
           toast.error(errorMsg);
         }
-        
+
         // Set inline errors if any field-specific error was detected
         if (Object.values(newErrors).some(err => err !== "")) {
           setEditErrors(newErrors);
         }
       }
-    });
+    } catch (error: any) {
+      console.error("[Promotion] Error updating promotion:", error);
+      toast.error(error.message || "Failed to update promotion. Please try again.");
+    }
   };
 
   // Handle delete promotion
@@ -947,41 +900,37 @@ const Promotion = () => {
     setViewingPromotion(promotion);
   };
 
-  const confirmDelete = () => {
-    if (!socket || !deletingPromotionId) {
-      toast.error("Socket not connected or no promotion selected");
+  const confirmDelete = async () => {
+    if (!deletingPromotionId) {
+      toast.error("No promotion selected");
       return;
     }
 
-    console.log("[Promotion] Deleting promotion:", deletingPromotionId);
+    console.log("[Promotion] Deleting promotion via REST API:", deletingPromotionId);
 
-    const timeoutId = setTimeout(() => {
-      toast.error("Delete timeout. Please try again.");
-    }, 10000);
+    try {
+      // Call REST API to delete promotion
+      const result = await deletePromotion(deletingPromotionId);
 
-    socket.emit("promotion:delete", { promotionId: deletingPromotionId });
-
-    socket.once("promotion:delete:response", (response: any) => {
-      clearTimeout(timeoutId);
-      console.log("[Promotion] Delete response:", response);
-      if (response.done) {
+      if (result) {
         // Show toast first
         toast.success("Promotion deleted successfully!");
-        
-        // Re-fetch promotions list to ensure consistency
-        console.log("[Promotion] Re-fetching promotions after delete");
-        socket.emit("promotion:getAll", {});
-        
+
         // Close modal with delay for animation
         setTimeout(() => {
           closeModalReliably("delete_modal");
           setDeletingPromotionId(null);
         }, 100);
       } else {
-        toast.error(response.error || "Failed to delete promotion");
-        console.error("[Promotion] Delete failed:", response);
+        // Handle errors from REST API
+        const errorMessage = "Failed to delete promotion";
+        toast.error(errorMessage);
+        console.error("[Promotion] Delete failed:", result);
       }
-    });
+    } catch (error: any) {
+      console.error("[Promotion] Error deleting promotion:", error);
+      toast.error(error.message || "Failed to delete promotion. Please try again.");
+    }
   };
 
   // Convert departments to select options
@@ -1037,8 +986,8 @@ const Promotion = () => {
   const data = promotions
     .filter(promotion => {
       // Filter out promotions with incomplete data structure
-      return promotion?.employee?.id && 
-             promotion?.promotionFrom?.department?.name && 
+      return promotion?.employee?.id &&
+             promotion?.promotionFrom?.department?.name &&
              promotion?.promotionFrom?.designation?.name &&
              promotion?.promotionTo?.designation?.name;
     })
@@ -1046,7 +995,7 @@ const Promotion = () => {
       // Look up the actual employee from employees array to get the correct employeeId
       const employee = employees.find(emp => emp.id === promotion.employee.id);
       const displayEmployeeId = promotion.employee.employeeId || employee?.employeeId || promotion.employee.id;
-      
+
       return {
         key: promotion._id,
         Employee_ID: displayEmployeeId,
@@ -1192,7 +1141,7 @@ const Promotion = () => {
             </div>
           </div>
           {/* /Breadcrumb */}
-          
+
           {/* Promotion Stats Cards */}
           <div className="row">
             <div className="col-xl-3 col-sm-6 col-12 d-flex">
@@ -1265,7 +1214,7 @@ const Promotion = () => {
             </div>
           </div>
           {/* /Promotion Stats Cards */}
-          
+
           {/* Promotion List */}
           <div className="row">
             <div className="col-sm-12">
@@ -1404,7 +1353,7 @@ const Promotion = () => {
                         </div>
                       </div>
                     )}
-                    
+
                     {/* Two-Column Layout */}
                     <div className="col-md-6">
                       <div className="mb-3">
@@ -1545,7 +1494,7 @@ const Promotion = () => {
                             />
                           </div>
                         </div>
-                        
+
                         {/* Two-Column Layout */}
                         <div className="col-md-6">
                           <div className="mb-3">

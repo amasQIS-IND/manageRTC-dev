@@ -122,6 +122,7 @@ export const getTenantCollections = (tenantDbName) => {
     hr: db.collection('hr'),
     permissions: db.collection('permissions'),
     policy: db.collection('policy'),
+    policies: db.collection('policy'), // Add explicit mapping for policy REST API
     designations: db.collection('designations'),
     assets: db.collection('assets'),
     assetCategories: db.collection('assetCategories'),

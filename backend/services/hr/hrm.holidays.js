@@ -101,11 +101,15 @@ export const addHoliday = async (companyId, hrId, holidaydata) => {
 
 export const displayHoliday = async (companyId) => {
   try {
+    console.log('[displayHoliday] Starting with companyId:', companyId);
+
     if (!companyId) {
+      console.error('[displayHoliday] Missing companyId');
       return { done: false, message: "Missing companyId" };
     }
 
     const collections = getTenantCollections(companyId);
+    console.log('[displayHoliday] Got tenant collections');
 
     // Use aggregation pipeline to resolve holidayTypeName via lookup
     const holidays = await collections.holidays
@@ -139,6 +143,8 @@ export const displayHoliday = async (companyId) => {
       ])
       .toArray();
 
+    console.log('[displayHoliday] Found holidays:', holidays.length);
+
     return {
       done: true,
       data: holidays,
@@ -147,6 +153,7 @@ export const displayHoliday = async (companyId) => {
         : "No holidays found matching criteria",
     };
   } catch (error) {
+    console.error('[displayHoliday] Error:', error.message, error.stack);
     return {
       done: false,
       message: `Failed to fetch holidays: ${error.message}`,
@@ -164,7 +171,7 @@ export const updateHoliday = async (companyId, hrId, payload) => {
 
     // Use _id if holidayId is not provided (for backward compatibility)
     const holidayId = payload.holidayId || payload._id;
-    
+
     if (!holidayId) {
       return { done: false, message: "Holiday ID not found" };
     }

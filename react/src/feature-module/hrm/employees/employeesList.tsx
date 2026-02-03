@@ -296,6 +296,7 @@ const EmployeeList = () => {
   );
   const [selectedDepartment, setSelectedDepartment] = useState<string>("");
   const [selectedDesignation, setSelectedDesignation] = useState<string>("");
+  const [isDesignationDisabled, setIsDesignationDisabled] = useState<boolean>(true);
   const [sortOrder, setSortOrder] = useState("");
   const [selectedStatus, setSelectedStatus] = useState("");
   const [employeeToDelete, setEmployeeToDelete] = useState<Employee | null>(
@@ -578,17 +579,21 @@ const EmployeeList = () => {
 
       checkLifecycle();
 
-      // Fetch designations for the employee's department
+      // Fetch designations for the employee's department and enable designation field
       if (editingEmployee.departmentId) {
+        setIsDesignationDisabled(false);
+        setSelectedDepartment(editingEmployee.departmentId);
         fetchDesignations({ departmentId: editingEmployee.departmentId }).then((desigData: any[]) => {
           if (desigData && desigData.length > 0) {
             const mappedDesignations = desigData.map((d: Designation) => ({
               value: d._id,
               label: d.designation,
             }));
-            setDesignation([{ value: "", label: "Select" }, ...mappedDesignations]);
+            setDesignation([{ value: "", label: "Select Designation" }, ...mappedDesignations]);
           }
         });
+      } else {
+        setIsDesignationDisabled(true);
       }
     }
   }, [editingEmployee, checkLifecycleStatusREST, fetchDesignations]);
@@ -1979,8 +1984,12 @@ const EmployeeList = () => {
     setPermissions(initialState);
     setError("");
     setFieldErrors({});
-
     setIsBasicInfoValidated(false);
+    setActiveTab("basic-info");
+    setSelectedDepartment("");
+    setSelectedDesignation("");
+    setIsDesignationDisabled(true);
+    setDesignation([{ value: "", label: "Select Designation" }]);
   };
 
   // Helper function to safely prepare employee for editing
@@ -3249,7 +3258,7 @@ const EmployeeList = () => {
                             options={department}
                             defaultValue={EMPTY_OPTION}
                             onChange={(option) => {
-                              if (option) {
+                              if (option && option.value) {
                                 handleSelectChange(
                                   "departmentId",
                                   option.value,
@@ -3263,6 +3272,9 @@ const EmployeeList = () => {
                                 handleSelectChange("designationId", "");
                                 setSelectedDesignation("");
 
+                                // Enable designation field
+                                setIsDesignationDisabled(false);
+
                                 // Clear errors for both department and designation
                                 clearFieldError("departmentId");
                                 clearFieldError("designationId");
@@ -3270,12 +3282,13 @@ const EmployeeList = () => {
                                 // Fetch new designations for selected department
                                 fetchDesignations({ departmentId: option.value });
                               } else {
-                                // Clear selection
+                                // Clear selection and disable designation
                                 handleSelectChange("departmentId", "");
                                 handleSelectChange("designationId", "");
                                 setSelectedDepartment("");
                                 setSelectedDesignation("");
                                 setDesignation([{ value: "", label: "Select Designation" }]);
+                                setIsDesignationDisabled(true);
                                 clearFieldError('departmentId');
                                 clearFieldError('designationId');
                               }
@@ -3297,16 +3310,26 @@ const EmployeeList = () => {
                             className={`select ${fieldErrors.designationId ? "is-invalid" : ""}`}
                             options={designation}
                             defaultValue={EMPTY_OPTION}
+                            disabled={isDesignationDisabled}
                             onChange={(option) => {
-                              if (option) {
+                              if (option && option.value) {
                                 handleSelectChange(
                                   "designationId",
                                   option.value,
                                 );
+                                setSelectedDesignation(option.value);
                                 clearFieldError("designationId");
+                              } else {
+                                handleSelectChange("designationId", "");
+                                setSelectedDesignation("");
                               }
                             }}
                           />
+                          {isDesignationDisabled && !fieldErrors.designationId && (
+                            <small className="text-muted d-block mt-1">
+                              Please select a department first
+                            </small>
+                          )}
                           {fieldErrors.designationId && (
                             <div className="invalid-feedback d-block">
                               {fieldErrors.designationId}
@@ -4170,7 +4193,7 @@ const EmployeeList = () => {
                               ) || { value: "", label: "Select" }
                             }
                             onChange={(option) => {
-                              if (option) {
+                              if (option && option.value) {
                                 setSelectedDepartment(option.value);
                                 setEditingEmployee((prev) =>
                                   prev
@@ -4184,20 +4207,21 @@ const EmployeeList = () => {
                                 setSelectedDesignation("");
                                 // Reset designation dropdown to default
                                 setDesignation([{ value: "", label: "Select Designation" }]);
+                                // Enable designation field
+                                setIsDesignationDisabled(false);
                                 // Clear designation error
                                 clearFieldError('designationId');
-                                if (option.value) {
-                                  console.log(
-                                    "Fetching designations for department:",
-                                    option.value,
-                                  );
-                                  fetchDesignations({ departmentId: option.value });
-                                }
+                                console.log(
+                                  "Fetching designations for department:",
+                                  option.value,
+                                );
+                                fetchDesignations({ departmentId: option.value });
                               } else {
-                                // clear selection
+                                // clear selection and disable designation
                                 setSelectedDepartment("");
                                 setSelectedDesignation("");
                                 setDesignation([{ value: "", label: "Select Designation" }]);
+                                setIsDesignationDisabled(true);
                                 setEditingEmployee((prev) =>
                                   prev
                                     ? { ...prev, departmentId: "", designationId: "" }
@@ -4220,14 +4244,15 @@ const EmployeeList = () => {
                             key={`desig-${editingEmployee?._id}-${editingEmployee?.designationId}`}
                             className={`select ${fieldErrors.designationId ? 'is-invalid' : ''}`}
                             options={designation}
+                            disabled={isDesignationDisabled}
                             defaultValue={
                               designation.find(
                                 (dep) =>
                                   dep.value === editingEmployee?.designationId,
-                              ) || { value: "", label: "Select" }
+                              ) || { value: "", label: "Select Designation" }
                             }
                             onChange={(option) => {
-                              if (option) {
+                              if (option && option.value) {
                                 setSelectedDesignation(option.value);
                                 setEditingEmployee((prev) =>
                                   prev
@@ -4242,10 +4267,14 @@ const EmployeeList = () => {
                                     ? { ...prev, designationId: "" }
                                     : prev
                                 );
-                                clearFieldError('designationId');
                               }
                             }}
                           />
+                          {isDesignationDisabled && !fieldErrors.designationId && (
+                            <small className="text-muted d-block mt-1">
+                              Please select a department first
+                            </small>
+                          )}
                           {fieldErrors.designationId && (
                             <div className="invalid-feedback d-block">{fieldErrors.designationId}</div>
                           )}

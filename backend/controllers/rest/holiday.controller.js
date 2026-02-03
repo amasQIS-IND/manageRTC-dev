@@ -29,10 +29,15 @@ import {
 export const getAllHolidays = asyncHandler(async (req, res) => {
   const user = extractUser(req);
 
+  console.log('[Holiday Controller] getAllHolidays - companyId:', user.companyId);
+
   const result = await displayHoliday(user.companyId);
 
+  console.log('[Holiday Controller] displayHoliday result:', { done: result.done, dataLength: result.data?.length, message: result.message });
+
   if (!result.done) {
-    throw buildConflictError(result.message || 'Failed to fetch holidays');
+    console.error('[Holiday Controller] Error fetching holidays:', result.message);
+    throw new Error(result.message || 'Failed to fetch holidays');
   }
 
   return sendSuccess(res, result.data, 'Holidays retrieved successfully', 200, {

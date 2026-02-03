@@ -16,6 +16,8 @@ import CommonSelect from "../../core/common/commonSelect";
 import { DatePicker } from "antd";
 import dayjs from "dayjs";
 import HolidayDetailsModal from "../../core/modals/HolidayDetailsModal";
+// REST API Hook for Holidays
+import { useHolidaysREST } from "../../hooks/useHolidaysREST";
 
 interface Holidays {
   _id: string;
@@ -61,7 +63,7 @@ const Holidays = () => {
   const [responseData, setResponseData] = useState(null);
   const [holiday, setHoliday] = useState<Holidays[]>([]);
   const [editingHoliday, setEditingHoliday] = useState<Holidays | null>(null);
-  const [deleteHoliday, setDeleteHoliday] = useState<Holidays | null>(null);
+  const [deletingHoliday, setDeletingHoliday] = useState<Holidays | null>(null);
   const [viewingHoliday, setViewingHoliday] = useState<Holidays | null>(null);
 
   // Dropdown options (matching employeesList.tsx pattern)
@@ -119,30 +121,46 @@ const Holidays = () => {
   });
 
   const socket = useSocket() as Socket | null;
-  
+
+  // REST API Hooks for Holidays and Holiday Types
+  const {
+    holidays: apiHolidays,
+    holidayTypes: apiHolidayTypes,
+    loading: apiLoading,
+    fetchHolidays,
+    fetchHolidayTypes,
+    createHoliday,
+    updateHoliday,
+    deleteHoliday: deleteHolidayAPI,
+    createHolidayType,
+    updateHolidayType,
+    deleteHolidayType,
+    initializeDefaultHolidayTypes
+  } = useHolidaysREST();
+
   // Calculate holiday statistics
   const calculateStats = () => {
     const now = new Date();
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
-    
+
     const totalHolidays = holiday.length;
-    
+
     const upcomingCount = holiday.filter(h => {
       if (!h.date) return false;
       const holidayDate = new Date(h.date);
       return holidayDate > now;
     }).length;
-    
+
     const thisMonthCount = holiday.filter(h => {
       if (!h.date) return false;
       const holidayDate = new Date(h.date);
-      return holidayDate.getMonth() === currentMonth && 
+      return holidayDate.getMonth() === currentMonth &&
              holidayDate.getFullYear() === currentYear;
     }).length;
-    
+
     const totalTypesCount = holidayTypes.length;
-    
+
     setStats({
       totalHolidays,
       upcomingCount,
@@ -150,7 +168,7 @@ const Holidays = () => {
       totalTypesCount
     });
   };
-  
+
   // Use modal cleanup hook for automatic cleanup on unmount
   useModalCleanup();
 
@@ -161,9 +179,7 @@ const Holidays = () => {
   };
 
   useEffect(() => {
-    if (!socket) return;
-
-    console.log("[Holidays] Setting up socket listeners");
+    console.log("[Holidays] Fetching initial data via REST API");
     let isMounted = true;
 
     setLoading(true);
@@ -176,285 +192,60 @@ const Holidays = () => {
       }
     }, 30000);
 
-    // Fetch holidays
-    console.log("[Holidays] Fetching holidays");
-    socket.emit("hrm/holiday/get");
-    
-    // Fetch holiday types
-    console.log("[Holidays] Fetching holiday types");
-    socket.emit("hrm/holidayType/get");
-
-    const handleAddHolidayResponse = (response: any) => {
-      if (!isMounted) return;
-
-      if (response.done) {
-        setResponseData(response.data);
-        toast.success(response.message);
-        setError(null);
-        setLoading(false);
-        if (socket) {
-          socket.emit("hrm/holiday/get");
-        }
-        
-        // Close modal using utility
-        closeModal('add_holiday');
-        
-        // Additional cleanup to ensure backdrop is removed (fail-safe)
-        setTimeout(() => {
-          const backdrops = document.querySelectorAll('.modal-backdrop');
-          if (backdrops.length > 0) {
-            console.warn('[Add Holiday] Backdrop still exists after modal close, force removing');
-            backdrops.forEach(b => b.remove());
-            document.body.classList.remove('modal-open');
-          }
-        }, 400);
-        
-        // Cleanup form
-        resetAddForm();
-      } else {
-        // Handle validation errors
-        if (response.errors) {
-          // Map backend errors to frontend validation errors
-          const newErrors: ValidationErrors = {};
-          Object.keys(response.errors).forEach(key => {
-            // Find the holiday entry by checking which one is being submitted
-            // For now, apply to the first entry (can be enhanced for multi-entry)
-            if (holidayEntries[0]) {
-              newErrors[holidayEntries[0].id] = {
-                ...newErrors[holidayEntries[0].id],
-                [key]: response.errors[key]
-              };
-            }
-          });
-          setValidationErrors(newErrors);
-          toast.error(response.message || "Validation failed. Please check your inputs.");
-        } else {
-          setError(response.message || "Failed to add holiday");
-          toast.error(response.message || "Failed to add holiday");
-        }
+    // Fetch holidays and holiday types via REST API
+    const fetchInitialData = async () => {
+      if (isMounted) {
+        await Promise.all([
+          fetchHolidays(),
+          fetchHolidayTypes()
+        ]);
         setLoading(false);
       }
     };
+    fetchInitialData();
 
-    const handleGetHolidayResponse = (response: any) => {
-      if (!isMounted) return;
-
-      if (response.done) {
-        setHoliday(response.data);
-        setResponseData(response.data);
-        setError(null);
-        setLoading(false);
-      } else {
-        setError(response.message || response.error || "Failed to get holiday");
-        toast.error(error);
-        setLoading(false);
-      }
+    // Real-time broadcast listeners (KEEP - for real-time updates from backend)
+    const handleHolidayCreated = (data: any) => {
+      console.log("[Holidays] Real-time: Holiday created");
+      fetchHolidays();
+    };
+    const handleHolidayUpdated = (data: any) => {
+      console.log("[Holidays] Real-time: Holiday updated");
+      fetchHolidays();
+    };
+    const handleHolidayDeleted = (data: any) => {
+      console.log("[Holidays] Real-time: Holiday deleted");
+      fetchHolidays();
     };
 
-    const handleEditHolidayResponse = (response: any) => {
-      if (!isMounted) return;
-
-      if (response.done) {
-        setResponseData(response.data);
-        toast.success("Holiday updated successfully");
-        setError(null);
-        setLoading(false);
-        if (socket) {
-          socket.emit("hrm/holiday/get");
-        }
-        
-        // Close modal using utility
-        closeModal('edit_holiday');
-        
-        // Additional cleanup to ensure backdrop is removed (fail-safe)
-        setTimeout(() => {
-          const backdrops = document.querySelectorAll('.modal-backdrop');
-          if (backdrops.length > 0) {
-            console.warn('[Edit Holiday] Backdrop still exists after modal close, force removing');
-            backdrops.forEach(b => b.remove());
-            document.body.classList.remove('modal-open');
-          }
-        }, 400);
-      } else {
-        // Handle validation errors for edit
-        if (response.errors) {
-          setEditValidationErrors(response.errors);
-          toast.error(response.message || "Validation failed. Please check your inputs.");
-        } else {
-          setError(response.message || "Failed to update holiday");
-          toast.error(response.message || "Failed to update holiday");
-        }
-        setLoading(false);
-      }
+    // Only set up socket listeners if socket is available
+    if (socket) {
+      socket.on("holiday:created", handleHolidayCreated);
+      socket.on("holiday:updated", handleHolidayUpdated);
+      socket.on("holiday:deleted", handleHolidayDeleted);
     }
 
-    const handleDeleteHolidayResponse = (response: any) => {
-      if (!isMounted) return;
-
-      if (response.done) {
-        setResponseData(response.data);
-        toast.success("Holiday deleted successfully");
-        setError(null);
-        setLoading(false);
-        if (socket) {
-          socket.emit("hrm/holiday/get");
-        }
-        
-        // Close modal using utility
-        closeModal('delete_modal');
-        
-        // Additional cleanup to ensure backdrop is removed (fail-safe)
-        setTimeout(() => {
-          const backdrops = document.querySelectorAll('.modal-backdrop');
-          if (backdrops.length > 0) {
-            console.warn('[Delete Holiday] Backdrop still exists after modal close, force removing');
-            backdrops.forEach(b => b.remove());
-            document.body.classList.remove('modal-open');
-          }
-        }, 400);
-      } else {
-        setError(response.message || response.error || "Failed to delete holiday");
-        toast.error(response.message || response.error || "Failed to delete holiday");
-        setLoading(false);
-      }
-    }
-
-    // Holiday Type Handlers
-    const handleGetHolidayTypesResponse = (response: any) => {
-      console.log("[Holiday Types] Received get response:", response);
-      
-      if (!isMounted) return;
-
-      if (response.done) {
-        console.log("[Holiday Types] Setting holiday types:", response.data?.length || 0, "types");
-        setHolidayTypes(response.data || []);
-        // Auto-initialization removed - users can manually load defaults if needed
-      } else {
-        console.error("[Holiday Types] Failed to fetch holiday types:", response.message);
-      }
-    };
-
-    const handleAddHolidayTypeResponse = (response: any) => {
-      console.log("[Holiday Types] Received add response:", response);
-      
-      if (!isMounted) {
-        console.log("[Holiday Types] Component unmounted, ignoring response");
-        return;
-      }
-
-      // Reset loading state
-      setIsAddingType(false);
-
-      if (response.done) {
-        console.log("[Holiday Types] Successfully added holiday type");
-        toast.success(response.message || "Holiday type added successfully");
-        
-        // Clear input and errors
-        setNewTypeName("");
-        setTypeValidationError("");
-        
-        // Refresh holiday types
-        console.log("[Holiday Types] Refreshing holiday types list");
-        socket.emit("hrm/holidayType/get");
-      } else {
-        console.error("[Holiday Types] Failed to add holiday type:", response);
-        
-        // Handle validation errors
-        if (response.errors?.name) {
-          setTypeValidationError(response.errors.name);
-          toast.error(response.errors.name);
-        } else if (response.message) {
-          setTypeValidationError(response.message);
-          toast.error(response.message);
-        } else {
-          const defaultError = "Failed to add holiday type";
-          setTypeValidationError(defaultError);
-          toast.error(defaultError);
-        }
-      }
-    };
-
-    const handleUpdateHolidayTypeResponse = (response: any) => {
-      if (!isMounted) return;
-
-      if (response.done) {
-        toast.success(response.message || "Holiday type updated successfully");
-        // Refresh holiday types
-        socket.emit("hrm/holidayType/get");
-        setEditingTypeId(null);
-        setEditingTypeName("");
-        setEditTypeValidationError("");
-      } else {
-        if (response.errors?.name) {
-          setEditTypeValidationError(response.errors.name);
-        } else {
-          setEditTypeValidationError(response.message || "Failed to update holiday type");
-        }
-      }
-    };
-
-    const handleDeleteHolidayTypeResponse = (response: any) => {
-      if (!isMounted) return;
-
-      if (response.done) {
-        toast.success(response.message || "Holiday type deleted successfully");
-        // Refresh holiday types
-        socket.emit("hrm/holidayType/get");
-        setDeletingTypeId(null);
-      } else {
-        toast.error(response.message || "Failed to delete holiday type");
-        setDeletingTypeId(null);
-      }
-    };
-
-    const handleInitializeHolidayTypesResponse = (response: any) => {
-      console.log("[Holiday Types] Received initialize response:", response);
-      
-      if (!isMounted) return;
-
-      // Reset initialization flag
-      setIsInitializingTypes(false);
-
-      if (response.done) {
-        console.log("[Holiday Types] Default types initialized successfully");
-        toast.success(response.message || "Default holiday types loaded successfully");
-        // Refresh holiday types after initialization
-        socket.emit("hrm/holidayType/get");
-      } else {
-        console.error("[Holiday Types] Failed to initialize defaults:", response.message);
-        toast.error(response.message || "Failed to load default holiday types");
-      }
-    };
-
-    socket.on("hrm/holiday/add-response", handleAddHolidayResponse);
-    socket.on("hrm/holiday/get-response", handleGetHolidayResponse);
-    socket.on("hrm/holiday/update-response", handleEditHolidayResponse);
-    socket.on("hrm/holiday/delete-response", handleDeleteHolidayResponse);
-    
-    socket.on("hrm/holidayType/get-response", handleGetHolidayTypesResponse);
-    socket.on("hrm/holidayType/add-response", handleAddHolidayTypeResponse);
-    socket.on("hrm/holidayType/update-response", handleUpdateHolidayTypeResponse);
-    socket.on("hrm/holidayType/delete-response", handleDeleteHolidayTypeResponse);
-    socket.on("hrm/holidayType/initialize-response", handleInitializeHolidayTypesResponse);
-    
-    console.log("[Holidays] Socket listeners registered successfully");
-    
     return () => {
       isMounted = false;
       clearTimeout(timeoutId);
-      socket.off("hrm/holiday/add-response", handleAddHolidayResponse);
-      socket.off("hrm/holiday/get-response", handleGetHolidayResponse);
-      socket.off("hrm/holiday/update-response", handleEditHolidayResponse);
-      socket.off("hrm/holiday/delete-response", handleDeleteHolidayResponse);
-      
-      socket.off("hrm/holidayType/get-response", handleGetHolidayTypesResponse);
-      socket.off("hrm/holidayType/add-response", handleAddHolidayTypeResponse);
-      socket.off("hrm/holidayType/update-response", handleUpdateHolidayTypeResponse);
-      socket.off("hrm/holidayType/delete-response", handleDeleteHolidayTypeResponse);
-      socket.off("hrm/holidayType/initialize-response", handleInitializeHolidayTypesResponse);
+      if (socket) {
+        socket.off("holiday:created", handleHolidayCreated);
+        socket.off("holiday:updated", handleHolidayUpdated);
+        socket.off("holiday:deleted", handleHolidayDeleted);
+      }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [socket]);
+  }, [socket, fetchHolidays, fetchHolidayTypes]);
+
+  // Sync local state with REST API state
+  useEffect(() => {
+    const transformedHolidays: Holidays[] = apiHolidays.map(holiday => ({
+      ...holiday,
+      description: holiday.description || '',
+    }));
+    setHoliday(transformedHolidays);
+    setHolidayTypes(apiHolidayTypes);
+    setLoading(apiLoading);
+  }, [apiHolidays, apiHolidayTypes, apiLoading]);
 
   // Handle modal backdrop cleanup for Holiday Types modal
   useEffect(() => {
@@ -464,7 +255,7 @@ const Holidays = () => {
     } else {
       // Remove modal-open class and any leftover backdrops when modal closes
       document.body.classList.remove('modal-open');
-      
+
       // Clean up any leftover backdrop elements
       const backdrops = document.querySelectorAll('.modal-backdrop');
       backdrops.forEach(backdrop => backdrop.remove());
@@ -478,16 +269,10 @@ const Holidays = () => {
     };
   }, [showTypesModal]);
 
-  const handleDeleteHoliday = (holidayId: string) => {
+  const handleDeleteHoliday = async (holidayId: string) => {
     try {
       setLoading(true);
       setError(null);
-
-      if (!socket) {
-        setError("Socket connection is not available");
-        setLoading(false);
-        return;
-      }
 
       if (!holidayId) {
         setError("Holiday ID is required");
@@ -495,9 +280,27 @@ const Holidays = () => {
         return;
       }
 
-      socket.emit("hrm/holiday/delete", holidayId);
+      // Use REST API to delete holiday
+      const result = await deleteHolidayAPI(holidayId);
+      if (result) {
+        // Close modal using utility
+        closeModal('delete_modal');
+
+        // Additional cleanup to ensure backdrop is removed (fail-safe)
+        setTimeout(() => {
+          const backdrops = document.querySelectorAll('.modal-backdrop');
+          if (backdrops.length > 0) {
+            console.warn('[Delete Holiday] Backdrop still exists after modal close, force removing');
+            backdrops.forEach(b => b.remove());
+            document.body.classList.remove('modal-open');
+          }
+        }, 400);
+      } else {
+        setError("Failed to delete holiday");
+        setLoading(false);
+      }
     } catch (error) {
-      setError("Failed to initiate holiday deletion");
+      setError("Failed to delete holiday");
       setLoading(false);
     }
   };
@@ -546,23 +349,23 @@ const Holidays = () => {
   // Validate single holiday entry
   const validateHolidayEntry = (entry: HolidayEntry): HolidayEntryErrors => {
     const errors: HolidayEntryErrors = {};
-    
+
     if (!entry.title.trim()) {
       errors.title = "Title is required";
     }
-    
+
     if (!entry.date) {
       errors.date = "Date is required";
     }
-    
+
     if (!entry.status) {
       errors.status = "Status is required";
     }
-    
+
     if (!entry.holidayTypeId) {
       errors.holidayTypeId = "Holiday type is required";
     }
-    
+
     return errors;
   };
 
@@ -583,42 +386,44 @@ const Holidays = () => {
     return !hasErrors;
   };
 
-  // Handle submit multiple holidays
-  const handleSubmitHolidays = () => {
+  // Handle submit multiple holidays (using REST API)
+  const handleSubmitHolidays = async () => {
     if (!validateAllEntries()) {
       toast.error("Please fix all validation errors before submitting");
       return;
     }
 
-    if (!socket) {
-      toast.error("Socket connection is not available");
-      return;
-    }
-
     setLoading(true);
 
-    // Submit each holiday
-    holidayEntries.forEach((entry, index) => {
-      const holidayData = {
-        title: entry.title.trim(),
-        date: entry.date,
-        description: entry.description.trim(),
-        status: normalizeStatus(entry.status),
-        holidayTypeId: entry.holidayTypeId,
-        repeatsEveryYear: entry.repeatsEveryYear
-      };
+    try {
+      // Submit each holiday via REST API
+      const promises = holidayEntries.map(async (entry) => {
+        const holidayData = {
+          title: entry.title.trim(),
+          date: entry.date,
+          description: entry.description.trim(),
+          status: normalizeStatus(entry.status) as 'Active' | 'Inactive',
+          holidayTypeId: entry.holidayTypeId,
+          repeatsEveryYear: entry.repeatsEveryYear
+        };
+        return await createHoliday(holidayData);
+      });
 
-      socket.emit("hrm/holiday/add", holidayData);
-    });
+      await Promise.all(promises);
 
-    // Reset form after a delay to allow all submissions
-    setTimeout(() => {
-      resetAddForm();
-      // Close modal
-      const modalElement = document.getElementById("add_holiday");
-      const modal = window.bootstrap?.Modal.getInstance(modalElement);
-      modal?.hide();
-    }, 500);
+      // Reset form after successful submission
+      setTimeout(() => {
+        resetAddForm();
+        // Close modal
+        const modalElement = document.getElementById("add_holiday");
+        const modal = window.bootstrap?.Modal.getInstance(modalElement);
+        modal?.hide();
+      }, 500);
+    } catch (error) {
+      console.error("[Holidays] Error submitting holidays:", error);
+      toast.error("Failed to add holidays. Please try again.");
+      setLoading(false);
+    }
   };
 
   // Reset add form
@@ -643,58 +448,67 @@ const Holidays = () => {
   // Validate edit form
   const validateEditForm = (): boolean => {
     const errors: HolidayEntryErrors = {};
-    
+
     if (!editTitle.trim()) {
       errors.title = "Title is required";
     }
-    
+
     if (!editDate) {
       errors.date = "Date is required";
     }
-    
+
     if (!editStatus) {
       errors.status = "Status is required";
     }
-    
+
     if (!editHolidayTypeId) {
       errors.holidayTypeId = "Holiday type is required";
     }
-    
+
     setEditValidationErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
-  // Handle edit submit
-  const handleEditSubmit = () => {
+  // Handle edit submit (using REST API)
+  const handleEditSubmit = async () => {
     if (!validateEditForm()) {
       toast.error("Please fix all validation errors before submitting");
       return;
     }
 
-    if (!socket || !editingHoliday) {
-      toast.error("Socket connection is not available");
+    if (!editingHoliday) {
+      toast.error("No holiday selected");
       return;
     }
 
     setLoading(true);
 
     const updatedHoliday = {
-      _id: editingHoliday._id,
       title: editTitle.trim(),
       date: editDate,
       description: editDescription.trim(),
-      status: normalizeStatus(editStatus),
+      status: normalizeStatus(editStatus) as 'Active' | 'Inactive',
       holidayTypeId: editHolidayTypeId,
       repeatsEveryYear: editRepeatsEveryYear
     };
 
-    socket.emit("hrm/holiday/update", updatedHoliday);
+    try {
+      const result = await updateHoliday(editingHoliday._id, updatedHoliday);
 
-    // Close modal
-    const modalElement = document.getElementById("edit_holiday");
-    const modal = window.bootstrap?.Modal.getInstance(modalElement);
-    modal?.hide();
-    setEditingHoliday(null);
+      if (result) {
+        // Close modal
+        const modalElement = document.getElementById("edit_holiday");
+        const modal = window.bootstrap?.Modal.getInstance(modalElement);
+        modal?.hide();
+        setEditingHoliday(null);
+      } else {
+        setLoading(false);
+      }
+    } catch (error) {
+      console.error("[Holidays] Error updating holiday:", error);
+      toast.error("Failed to update holiday. Please try again.");
+      setLoading(false);
+    }
   };
 
   // Clear edit validation error
@@ -708,51 +522,50 @@ const Holidays = () => {
   };
 
   // Holiday Types Management Functions
-  const handleAddHolidayType = () => {
+  const handleAddHolidayType = async () => {
     console.log("[Holiday Types] Adding new holiday type:", newTypeName);
-    
+
     // Clear any previous error
     setTypeValidationError("");
 
     // Validate type name
     const trimmedName = newTypeName.trim();
-    
+
     if (!trimmedName) {
       setTypeValidationError("Holiday type name is required");
       return;
     }
 
-    if (!socket) {
-      const errorMsg = "Socket connection is not available";
-      console.error("[Holiday Types]", errorMsg);
-      setTypeValidationError(errorMsg);
-      toast.error(errorMsg);
-      return;
-    }
-
     // Set loading state
     setIsAddingType(true);
-    
-    console.log("[Holiday Types] Emitting hrm/holidayType/add event with data:", {
+
+    console.log("[Holiday Types] Creating holiday type via REST API:", {
       name: trimmedName,
-      status: normalizeStatus("Active")
+      status: "Active"
     });
 
-    // Send to backend
-    socket.emit("hrm/holidayType/add", {
-      name: trimmedName,
-      status: normalizeStatus("Active")
-    });
+    // Send to backend via REST API
+    const result = await createHolidayType({ name: trimmedName });
+
+    if (result) {
+      setNewTypeName("");
+      setTypeValidationError("");
+      setIsAddingType(false);
+    } else {
+      setIsAddingType(false);
+    }
   };
 
-  const handleRemoveHolidayType = (typeId: string) => {
-    if (!socket) {
-      toast.error("Socket connection is not available");
-      return;
-    }
-
+  const handleRemoveHolidayType = async (typeId: string) => {
     setDeletingTypeId(typeId);
-    socket.emit("hrm/holidayType/delete", typeId);
+
+    const result = await deleteHolidayType(typeId);
+
+    if (result) {
+      setDeletingTypeId(null);
+    } else {
+      setDeletingTypeId(null);
+    }
   };
 
   const handleEditHolidayType = (typeId: string, typeName: string) => {
@@ -761,29 +574,31 @@ const Holidays = () => {
     setEditTypeValidationError("");
   };
 
-  const handleSaveEditHolidayType = () => {
+  const handleSaveEditHolidayType = async () => {
     // Clear any previous error
     setEditTypeValidationError("");
 
     // Validate type name
     const trimmedName = editingTypeName.trim();
-    
+
     if (!trimmedName) {
       setEditTypeValidationError("Holiday type name is required");
       return;
     }
 
-    if (!socket || !editingTypeId) {
-      toast.error("Socket connection is not available");
+    if (!editingTypeId) {
+      toast.error("No holiday type selected");
       return;
     }
 
-    // Send to backend
-    socket.emit("hrm/holidayType/update", {
-      _id: editingTypeId,
-      name: trimmedName,
-      status: normalizeStatus("Active")
-    });
+    // Send to backend via REST API
+    const result = await updateHolidayType(editingTypeId, { name: trimmedName });
+
+    if (result) {
+      setEditingTypeId(null);
+      setEditingTypeName("");
+      setEditTypeValidationError("");
+    }
   };
 
   const handleCancelEditHolidayType = () => {
@@ -792,20 +607,17 @@ const Holidays = () => {
     setEditTypeValidationError("");
   };
 
-  const handleLoadDefaultTypes = () => {
-    if (!socket) {
-      toast.error("Socket connection is not available");
-      return;
-    }
-
+  const handleLoadDefaultTypes = async () => {
     if (isInitializingTypes) {
       console.log("[Holiday Types] Already initializing, skipping duplicate request");
       return;
     }
 
-    console.log("[Holiday Types] Manually loading default types");
+    console.log("[Holiday Types] Manually loading default types via REST API");
     setIsInitializingTypes(true);
-    socket.emit("hrm/holidayType/initialize");
+
+    const result = await initializeDefaultHolidayTypes();
+    setIsInitializingTypes(false);
   };
 
   const handleCloseTypesModal = () => {
@@ -861,19 +673,19 @@ const Holidays = () => {
       filtered = filtered.filter(h => {
         if (!h.date) return false;
         const holidayDate = new Date(h.date);
-        
+
         // Check from date
         if (filterFromDate) {
           const fromDate = new Date(filterFromDate);
           if (holidayDate < fromDate) return false;
         }
-        
+
         // Check to date
         if (filterToDate) {
           const toDate = new Date(filterToDate);
           if (holidayDate > toDate) return false;
         }
-        
+
         return true;
       });
     }
@@ -972,7 +784,7 @@ const Holidays = () => {
             data-bs-toggle="modal"
             data-inert={true}
             data-bs-target="#delete_modal"
-            onClick={() => setDeleteHoliday(holiday)}
+            onClick={() => setDeletingHoliday(holiday)}
           >
             <i className="ti ti-trash" />
           </Link>
@@ -1148,7 +960,7 @@ const Holidays = () => {
           <div className="card">
             <div className="card-header d-flex align-items-center justify-content-between flex-wrap row-gap-3">
               <h5>Holidays List</h5>
-              
+
               {/* Filters Section */}
               <div className="d-flex align-items-center flex-wrap gap-2">
                 {/* Type Filter */}
@@ -1267,7 +1079,7 @@ const Holidays = () => {
                     Add Another Holiday
                   </button>
                 </div>
-                
+
                 <div style={{ maxHeight: "60vh", overflowY: "auto" }}>
                   {holidayEntries.map((entry, index) => (
                     <div
@@ -1676,15 +1488,15 @@ const Holidays = () => {
               </span>
               <h4 className="mb-1">Confirm Deletion</h4>
               <p className="mb-3">
-                {deleteHoliday
-                  ? `Are you sure you want to delete holiday "${deleteHoliday.title}"? This cannot be undone.`
+                {deletingHoliday
+                  ? `Are you sure you want to delete holiday "${deletingHoliday.title}"? This cannot be undone.`
                   : "You want to delete all the marked holidays, this can't be undone once you delete."}
               </p>
               <div className="d-flex justify-content-center">
                 <button
                   className="btn btn-light me-3"
                   data-bs-dismiss="modal"
-                  onClick={() => setDeleteHoliday(null)}
+                  onClick={() => setDeletingHoliday(null)}
                   disabled={loading}
                 >
                   Cancel
@@ -1693,10 +1505,10 @@ const Holidays = () => {
                   className="btn btn-danger"
                   data-bs-dismiss="modal"
                   onClick={() => {
-                    if (deleteHoliday) {
-                      handleDeleteHoliday(deleteHoliday._id);
+                    if (deletingHoliday) {
+                      handleDeleteHoliday(deletingHoliday._id);
                     }
-                    setDeleteHoliday(null);
+                    setDeletingHoliday(null);
                   }}
                   disabled={loading}
                 >
