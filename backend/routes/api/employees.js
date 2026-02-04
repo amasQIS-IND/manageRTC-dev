@@ -15,6 +15,7 @@ import {
   getEmployeeReportees,
   getEmployeeStatsByDepartment,
   searchEmployees,
+  checkDuplicates,
   bulkUploadEmployees
 } from '../../controllers/rest/employee.controller.js';
 import {
@@ -65,6 +66,15 @@ router.get(
   requireRole('admin', 'hr', 'superadmin'),
   validateQuery(employeeSchemas.list),
   getEmployees
+);
+
+// Check for duplicate email/phone before creating employee
+router.post(
+  '/check-duplicates',
+  authenticate,
+  requireCompany,
+  requireRole('admin', 'hr', 'superadmin'),
+  checkDuplicates
 );
 
 // Create new employee
