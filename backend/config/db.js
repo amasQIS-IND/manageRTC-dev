@@ -128,6 +128,7 @@ export const getTenantCollections = (tenantDbName) => {
     assetCategories: db.collection('assetCategories'),
     holidays: db.collection('holidays'),
     holidayTypes: db.collection('holidayTypes'),
+    shifts: db.collection('shifts'),
 
     // invoice section
     addInvoices: db.collection('invoices'),

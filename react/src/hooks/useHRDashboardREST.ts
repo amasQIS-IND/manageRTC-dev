@@ -147,6 +147,29 @@ export interface AnniversaryEvent {
   repeatsYearly: boolean;
 }
 
+export interface ResignationEvent {
+  _id: string;
+  employeeId: string;
+  noticeDate: string;
+  resignationDate: string;
+  lastWorkingDay: string;
+}
+
+export interface TerminationEvent {
+  _id: string;
+  employeeId: string;
+  terminationDate: string;
+  terminationType: string;
+}
+
+export interface PromotionEvent {
+  _id: string;
+  employeeId: string;
+  promotionDate: string;
+  fromDesignation: string;
+  toDesignation: string;
+}
+
 export interface CalendarEvent {
   type: 'holiday' | 'birthday' | 'anniversary';
   title: string;
@@ -154,7 +177,60 @@ export interface CalendarEvent {
   data?: any;
 }
 
+export interface PendingItems {
+  approvals: number;
+  leaveRequests: number;
+}
+
+export interface AttendanceOverview {
+  total: number;
+  present: number;
+  late: number;
+  permission: number;
+  absent: number;
+  absentees?: Array<{
+    _id: string;
+    name: string;
+    avatar: string;
+    position: string;
+  }>;
+}
+
+export interface ClockInOutData {
+  _id: string;
+  name: string;
+  position: string;
+  avatar: string;
+  clockIn: string;
+  clockOut: string;
+  status: string;
+  hoursWorked: number;
+}
+
+export interface JobApplicant {
+  _id: string;
+  name: string;
+  position: string;
+  experience: string;
+  location: string;
+  avatar: string;
+}
+
+export interface JobOpening {
+  _id: string;
+  count: number;
+}
+
+export interface JobApplicants {
+  openings?: JobOpening[];
+  applicants?: JobApplicant[];
+}
+
 export interface HRDashboardData {
+  pendingItems?: PendingItems;
+  attendanceOverview?: AttendanceOverview;
+  clockInOutData?: ClockInOutData[];
+  jobApplicants?: JobApplicants;
   stats?: HRDashboardStats;
   employeesByDepartment?: EmployeeByDepartment[];
   employeesByStatus?: EmployeesByStatus;
@@ -173,6 +249,9 @@ export interface HRDashboardData {
   allActiveHolidays?: HolidayEvent[];
   employeeBirthdays?: BirthdayEvent[];
   employeeAnniversaries?: AnniversaryEvent[];
+  resignations?: ResignationEvent[];
+  terminations?: TerminationEvent[];
+  promotions?: PromotionEvent[];
   leaveStats?: LeaveStats;
   attendanceStats?: AttendanceStats;
   recentBirthdays?: BirthdayEvent[];

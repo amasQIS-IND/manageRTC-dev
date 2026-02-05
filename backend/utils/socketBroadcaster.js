@@ -584,6 +584,61 @@ export const broadcastLeaveEvents = {
 };
 
 /**
+ * Leave Type event broadcasters
+ */
+export const broadcastLeaveTypeEvents = {
+  /**
+   * Broadcast leave type created event
+   */
+  created: (io, companyId, leaveType) => {
+    broadcastToCompany(io, companyId, 'leaveType:created', {
+      leaveTypeId: leaveType.leaveTypeId,
+      name: leaveType.name,
+      code: leaveType.code,
+      isActive: leaveType.isActive,
+      timestamp: new Date().toISOString()
+    });
+  },
+
+  /**
+   * Broadcast leave type updated event
+   */
+  updated: (io, companyId, leaveType) => {
+    broadcastToCompany(io, companyId, 'leaveType:updated', {
+      leaveTypeId: leaveType.leaveTypeId,
+      name: leaveType.name,
+      code: leaveType.code,
+      isActive: leaveType.isActive,
+      timestamp: new Date().toISOString()
+    });
+  },
+
+  /**
+   * Broadcast leave type status toggled event
+   */
+  status_toggled: (io, companyId, leaveType) => {
+    broadcastToCompany(io, companyId, 'leaveType:status_toggled', {
+      leaveTypeId: leaveType.leaveTypeId,
+      name: leaveType.name,
+      isActive: leaveType.isActive,
+      timestamp: new Date().toISOString()
+    });
+  },
+
+  /**
+   * Broadcast leave type deleted event
+   */
+  deleted: (io, companyId, leaveType) => {
+    broadcastToCompany(io, companyId, 'leaveType:deleted', {
+      leaveTypeId: leaveType.leaveTypeId,
+      name: leaveType.name,
+      code: leaveType.code,
+      timestamp: new Date().toISOString()
+    });
+  }
+};
+
+/**
  * Asset event broadcasters
  */
 export const broadcastAssetEvents = {
@@ -1250,6 +1305,114 @@ export const broadcastDesignationEvents = {
 };
 
 /**
+ * Holiday event broadcasters
+ */
+export const broadcastHolidayEvents = {
+  /**
+   * Broadcast holiday created event
+   */
+  created: (io, companyId, holiday) => {
+    broadcastToCompany(io, companyId, 'holiday:created', {
+      holidayId: holiday.holidayId,
+      name: holiday.name,
+      date: holiday.date,
+      type: holiday.type,
+      timestamp: new Date().toISOString()
+    });
+  },
+
+  /**
+   * Broadcast holiday updated event
+   */
+  updated: (io, companyId, holiday) => {
+    broadcastToCompany(io, companyId, 'holiday:updated', {
+      holidayId: holiday.holidayId,
+      name: holiday.name,
+      date: holiday.date,
+      type: holiday.type,
+      timestamp: new Date().toISOString()
+    });
+  },
+
+  /**
+   * Broadcast holiday deleted event
+   */
+  deleted: (io, companyId, holiday) => {
+    broadcastToCompany(io, companyId, 'holiday:deleted', {
+      holidayId: holiday.holidayId,
+      name: holiday.name,
+      timestamp: new Date().toISOString()
+    });
+  }
+};
+
+/**
+ * Shift event broadcasters
+ */
+export const broadcastShiftEvents = {
+  /**
+   * Broadcast shift created event
+   */
+  created: (io, companyId, shift) => {
+    broadcastToCompany(io, companyId, 'shift:created', {
+      shiftId: shift.shiftId,
+      _id: shift._id,
+      name: shift.name,
+      code: shift.code,
+      startTime: shift.startTime,
+      endTime: shift.endTime,
+      duration: shift.duration,
+      isDefault: shift.isDefault,
+      createdBy: shift.createdBy,
+      timestamp: new Date().toISOString()
+    });
+  },
+
+  /**
+   * Broadcast shift updated event
+   */
+  updated: (io, companyId, shift) => {
+    broadcastToCompany(io, companyId, 'shift:updated', {
+      shiftId: shift.shiftId,
+      _id: shift._id,
+      name: shift.name,
+      code: shift.code,
+      startTime: shift.startTime,
+      endTime: shift.endTime,
+      duration: shift.duration,
+      isDefault: shift.isDefault,
+      updatedBy: shift.updatedBy,
+      timestamp: new Date().toISOString()
+    });
+  },
+
+  /**
+   * Broadcast shift deleted event
+   */
+  deleted: (io, companyId, shiftId, deletedBy) => {
+    broadcastToCompany(io, companyId, 'shift:deleted', {
+      shiftId,
+      deletedBy,
+      timestamp: new Date().toISOString()
+    });
+  },
+
+  /**
+   * Broadcast default shift changed event
+   */
+  defaultChanged: (io, companyId, shift) => {
+    broadcastToCompany(io, companyId, 'shift:default_changed', {
+      shiftId: shift.shiftId,
+      _id: shift._id,
+      name: shift.name,
+      code: shift.code,
+      updatedBy: shift.updatedBy,
+      timestamp: new Date().toISOString()
+    });
+  }
+};
+
+/**
  * Helper to get Socket.IO instance from request
  * In Express, we can attach io to app and access via req.app.get('io')
  */
@@ -1270,6 +1433,9 @@ export default {
   broadcastClientEvents,
   broadcastAttendanceEvents,
   broadcastLeaveEvents,
+  broadcastLeaveTypeEvents,
+  broadcastHolidayEvents,
+  broadcastShiftEvents,
   broadcastAssetEvents,
   broadcastTrainingEvents,
   broadcastActivityEvents,

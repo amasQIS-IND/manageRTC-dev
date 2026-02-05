@@ -82,4 +82,53 @@ router.put('/:id', attendanceController.updateAttendance);
  */
 router.delete('/:id', attendanceController.deleteAttendance);
 
+/**
+ * @route   POST /api/attendance/:id/request-regularization
+ * @desc    Request attendance regularization
+ * @access  Private (All authenticated users)
+ */
+router.post('/:id/request-regularization', attendanceController.requestRegularization);
+
+/**
+ * @route   POST /api/attendance/:id/approve-regularization
+ * @desc    Approve attendance regularization
+ * @access  Private (Admin, HR, Manager)
+ */
+router.post('/:id/approve-regularization', attendanceController.approveRegularization);
+
+/**
+ * @route   POST /api/attendance/:id/reject-regularization
+ * @desc    Reject attendance regularization
+ * @access  Private (Admin, HR, Manager)
+ */
+router.post('/:id/reject-regularization', attendanceController.rejectRegularization);
+
+/**
+ * @route   GET /api/attendance/regularization/pending
+ * @desc    Get pending regularization requests
+ * @access  Private (Admin, HR, Manager)
+ */
+router.get('/regularization/pending', attendanceController.getPendingRegularizations);
+
+/**
+ * @route   POST /api/attendance/report
+ * @desc    Generate attendance report
+ * @access  Private (Admin, HR, Superadmin)
+ */
+router.post('/report', attendanceController.generateReport);
+
+/**
+ * @route   POST /api/attendance/report/employee/:employeeId
+ * @desc    Generate employee attendance report
+ * @access  Private (Admin, HR, Superadmin, Employee for own)
+ */
+router.post('/report/employee/:employeeId', attendanceController.generateEmployeeReport);
+
+/**
+ * @route   GET /api/attendance/export
+ * @desc    Export attendance data
+ * @access  Private (Admin, HR, Superadmin)
+ */
+router.get('/export', attendanceController.exportAttendance);
+
 export default router;

@@ -8,6 +8,7 @@ import { message } from 'antd';
 import { useCallback, useEffect, useState } from 'react';
 import { ApiResponse, buildParams, del, get, getAuthToken, post, put } from '../services/api';
 import { useSocket } from '../SocketContext';
+import axios from 'axios';
 
 // Permission Module Types
 export type PermissionModule =
@@ -900,6 +901,111 @@ export const useEmployeesREST = () => {
     }
   }, []);
 
+  /**
+   * Upload employee profile image
+   * REST API: POST /api/employees/:id/image
+   */
+  const uploadProfileImage = useCallback(async (
+    employeeId: string,
+    file: File
+  ): Promise<{ success: boolean; profileImage?: string; error?: any }> => {
+    setLoading(true);
+    setError(null);
+    try {
+      const token = getAuthToken();
+      if (!token) {
+        throw new Error('Authentication required');
+      }
+
+      // Create FormData for file upload
+      const formData = new FormData();
+      formData.append('profileImage', file);
+
+      // Get the base URL from the api service
+      const API_BASE_URL =
+        process.env.REACT_APP_API_URL || process.env.REACT_APP_BACKEND_URL || 'http://localhost:5000';
+
+      // Make direct axios call with FormData
+      const response = await axios.post(
+        `${API_BASE_URL}/api/employees/${employeeId}/image`,
+        formData,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            // Don't set Content-Type - let axios set it with the correct boundary
+          },
+          timeout: 60000, // 60 seconds for image upload
+        }
+      );
+
+      if (response.data && response.data.success) {
+        message.success('Profile image uploaded successfully!');
+
+        // Update the employee in the local state
+        setEmployees(prev =>
+          prev.map(emp =>
+            emp._id === employeeId
+              ? { ...emp, profileImage: response.data.data.profileImage, avatarUrl: response.data.data.profileImage }
+              : emp
+          )
+        );
+
+        return {
+          success: true,
+          profileImage: response.data.data.profileImage
+        };
+      }
+      throw new Error(response.data?.error?.message || 'Failed to upload image');
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.error?.message || err.message || 'Failed to upload profile image';
+      setError(errorMessage);
+      message.error(errorMessage);
+      return {
+        success: false,
+        error: errorMessage
+      };
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  /**
+   * Delete employee profile image
+   * REST API: DELETE /api/employees/:id/image
+   */
+  const deleteProfileImage = useCallback(async (
+    employeeId: string
+  ): Promise<boolean> => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response: ApiResponse = await del(`/employees/${employeeId}/image`);
+
+      if (response.success) {
+        message.success('Profile image removed successfully!');
+
+        // Update the employee in the local state
+        setEmployees(prev =>
+          prev.map(emp =>
+            emp._id === employeeId
+              ? { ...emp, profileImage: null, avatarUrl: null }
+              : emp
+          )
+        );
+
+        return true;
+      }
+      throw new Error(response.error?.message || 'Failed to delete image');
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.error?.message || err.message || 'Failed to delete profile image';
+      setError(errorMessage);
+      message.error(errorMessage);
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   // Socket.IO real-time listeners for broadcast notifications
   useEffect(() => {
     if (!socket) return;
@@ -975,7 +1081,9 @@ export const useEmployeesREST = () => {
     getDepartmentStats,
     checkDuplicates,
     checkUsernameAvailability,
-    checkLifecycleStatus
+    checkLifecycleStatus,
+    uploadProfileImage,
+    deleteProfileImage
   };
 };
 

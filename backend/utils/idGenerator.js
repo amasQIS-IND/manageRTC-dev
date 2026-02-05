@@ -205,6 +205,34 @@ export const generateAttendanceId = async (companyId) => {
 };
 
 /**
+ * generateShiftId - Generate unique shift ID
+ * Format: SHF-YYYY-NNNN
+ *
+ * @param {string} companyId - Company ID
+ * @returns {Promise<string>} Generated shift ID
+ */
+export const generateShiftId = async (companyId) => {
+  const Shift = mongoose.model('Shift');
+  const year = new Date().getFullYear();
+
+  const lastShift = await Shift.findOne({
+    companyId,
+    shiftId: new RegExp(`^SHF-${year}-`)
+  }).sort({ shiftId: -1 });
+
+  let sequence = 1;
+
+  if (lastShift && lastShift.shiftId) {
+    const lastSequence = parseInt(lastShift.shiftId.split('-')[2]);
+    sequence = lastSequence + 1;
+  }
+
+  const paddedSequence = String(sequence).padStart(4, '0');
+
+  return `SHF-${year}-${paddedSequence}`;
+};
+
+/**
  * generateAssetId - Generate unique asset ID
  * Format: AST-YYYY-NNNN
  *
@@ -316,6 +344,20 @@ export const generatePipelineId = async (companyId) => {
   return `PLN-${year}-${paddedSequence}`;
 };
 
+/**
+ * generateId - Generic ID generator
+ * Format: PREFIX-TIMESTAMP-RANDOM
+ *
+ * @param {string} prefix - ID prefix (e.g., 'HLD', 'DOC')
+ * @param {string} companyId - Company ID (optional, for consistency)
+ * @returns {string} Generated ID
+ */
+export const generateId = (prefix, companyId = '') => {
+  const timestamp = Date.now().toString(36).toUpperCase();
+  const random = Math.random().toString(36).substring(2, 8).toUpperCase();
+  return `${prefix}-${timestamp}-${random}`;
+};
+
 export default {
   generateEmployeeId,
   generateProjectId,
@@ -324,8 +366,10 @@ export default {
   generateLeadId,
   generateClientId,
   generateAttendanceId,
+  generateShiftId,
   generateAssetId,
   generateTrainingId,
   generateActivityId,
-  generatePipelineId
+  generatePipelineId,
+  generateId
 };

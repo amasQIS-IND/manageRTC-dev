@@ -41,15 +41,18 @@ import holidayRoutes from "./routes/api/holidays.js";
 import hrDashboardRoutes from "./routes/api/hr-dashboard.js";
 import leadRoutes from "./routes/api/leads.js";
 import leaveRoutes from "./routes/api/leave.js";
+import leaveTypeRoutes from "./routes/api/leaveTypes.js";
 import pipelineRoutes from "./routes/api/pipelines.js";
 import policyRoutes from "./routes/api/policies.js";
 import projectRoutes from "./routes/api/projects.js";
 import promotionRoutes from "./routes/api/promotions.js";
 import resignationRoutes from "./routes/api/resignations.js";
+import shiftRoutes from "./routes/api/shifts.js";
 import taskRoutes from "./routes/api/tasks.js";
 import terminationRoutes from "./routes/api/terminations.js";
 import trainingRoutes from "./routes/api/training.js";
 import userProfileRoutes from "./routes/api/user-profile.js";
+import clerkWebhookRoutes from "./routes/webhooks/clerk.routes.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -96,6 +99,26 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // Serve export files specifically
 app.use('/exports', express.static(path.join(__dirname, 'public', 'exports')));
+
+// Serve employee profile images with caching headers
+app.use('/uploads/employee-images', express.static(path.join(__dirname, 'public', 'uploads', 'employee-images'), {
+  setHeaders: (res, filepath) => {
+    // Set cache headers for images (1 day)
+    res.set('Cache-Control', 'public, max-age=86400, immutable');
+    res.set('X-Content-Type-Options', 'nosniff');
+  }
+}));
+
+// Serve leave attachments with security headers
+app.use('/uploads/leave-attachments', express.static(path.join(__dirname, 'public', 'uploads', 'leave-attachments'), {
+  setHeaders: (res, filepath) => {
+    // No cache for attachments (security)
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+    res.set('X-Content-Type-Options', 'nosniff');
+  }
+}));
 
 // Serve static files from the temp directory
 app.use(
@@ -154,6 +177,7 @@ const initializeServer = async () => {
     app.use("/api/clients", clientRoutes);
     app.use("/api/attendance", attendanceRoutes);
     app.use("/api/leaves", leaveRoutes);
+    app.use("/api/leave-types", leaveTypeRoutes);
     app.use("/api/assets", assetRoutes);
     app.use("/api/trainings", trainingRoutes);
     app.use("/api/activities", activityRoutes);
@@ -164,11 +188,15 @@ const initializeServer = async () => {
     app.use("/api/policies", policyRoutes);
     app.use("/api/designations", designationRoutes);
     app.use("/api/resignations", resignationRoutes);
+    app.use("/api/shifts", shiftRoutes);
     app.use("/api/terminations", terminationRoutes);
     app.use("/api/holidays", holidayRoutes);
     app.use("/api/hr-dashboard", hrDashboardRoutes);
     app.use("/api/admin-dashboard", adminDashboardRoutes);
     app.use("/api/user-profile", userProfileRoutes);
+
+    // Clerk Webhooks
+    app.use("/api/webhooks", clerkWebhookRoutes);
 
     // API Documentation (Swagger)
     app.use(
